@@ -14,6 +14,7 @@ const app = createApp({
     const switchSuggestion = ref('');
     const isLoading = ref(true);
     const displayScore = ref(0);
+    const isMobileDevice = ref(false);
     
     // 计算属性：分数颜色样式
     const scoreColorClass = computed(() => {
@@ -73,6 +74,14 @@ const app = createApp({
       updateScore();
     };
     
+    // 检测是否为移动设备
+    const detectMobileDevice = () => {
+      const ua = navigator.userAgent;
+      isMobileDevice.value = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
+      console.log(`[浏览器检测] - 设备类型: ${isMobileDevice.value ? '移动设备' : '桌面设备'}`);
+      return isMobileDevice.value;
+    };
+    
     // 安全测试一个特性
     const safeTest = (testFn, featureName) => {
       try {
@@ -92,6 +101,9 @@ const app = createApp({
       console.log('[浏览器检测] - 开始检测Web特性');
       console.log('[浏览器检测] - 用户代理:', navigator.userAgent);
       
+      // 检测是否为移动设备
+      const isMobile = detectMobileDevice();
+      
       const features = [
         { name: 'ES6 支持', test: () => {
           try {
@@ -106,7 +118,13 @@ const app = createApp({
         { name: 'Fetch API', test: () => typeof window.fetch === 'function' },
         { name: 'Promise', test: () => typeof window.Promise === 'function' },
         { name: 'Service Worker', test: () => 'serviceWorker' in navigator },
-        { name: 'WebAssembly', test: () => typeof WebAssembly === 'object' },
+        { name: 'WebAssembly', test: () => {
+          if (isMobile) {
+            console.log('[浏览器检测] - 在移动设备上跳过 WebAssembly 检测');
+            return true; // 在移动设备上自动标记为支持
+          }
+          return typeof WebAssembly === 'object';
+        }},
         { name: 'Async/Await', test: () => {
           try {
             new Function('async () => { await Promise.resolve(); }');
@@ -124,6 +142,10 @@ const app = createApp({
         }},
         { name: 'CSS Variables', test: () => window.CSS && CSS.supports('--a', '0') },
         { name: 'WebGL 2.0', test: () => {
+          if (isMobile) {
+            console.log('[浏览器检测] - 在移动设备上跳过 WebGL 2.0 检测');
+            return true; // 在移动设备上自动标记为支持
+          }
           try {
             const canvas = document.createElement('canvas');
             return !!canvas.getContext('webgl2');
@@ -312,6 +334,10 @@ const app = createApp({
           return result;
         }},
         { name: 'Idle Detection API', test: () => {
+          if (isMobile) {
+            console.log('[浏览器检测] - 在移动设备上跳过 Idle Detection API 检测');
+            return true; // 在移动设备上自动标记为支持
+          }
           const result = 'IdleDetector' in window;
           if (!result) {
             console.log('[浏览器检测] - Idle Detection API不支持: window.IdleDetector不存在');
@@ -340,6 +366,10 @@ const app = createApp({
           return result;
         }},
         { name: 'EyeDropper API', test: () => {
+          if (isMobile) {
+            console.log('[浏览器检测] - 在移动设备上跳过 EyeDropper API 检测');
+            return true; // 在移动设备上自动标记为支持
+          }
           const result = 'EyeDropper' in window;
           if (!result) {
             console.log('[浏览器检测] - EyeDropper API不支持: window.EyeDropper不存在');
@@ -517,6 +547,7 @@ const app = createApp({
       let upgradeSuggestion = '';
       let localSwitchSuggestion = '';
       let featureSuggestion = '';
+      let isFakeVersion = false;
       
       // 根据内核版本决定是否需要升级浏览器
       if (isChromeEngine.value) {
@@ -526,6 +557,7 @@ const app = createApp({
         if (typeof chromeVersion.value === 'string' && chromeVersion.value.includes('伪装')) {
           // 当检测到伪装版本时，使用固定的103版本
           version = 103;
+          isFakeVersion = true;
           upgradeSuggestion = `你的浏览器正在恶意伪装更高版本，实际使用的是严重过时的 Chromium 内核（估计为103），存在重大安全风险，强烈建议切换到原生 Chrome、Iridium 或 Firefox 浏览器。`;
         } else {
           version = chromeVersion.value;
@@ -558,26 +590,35 @@ const app = createApp({
         switchSuggestion.value = localSwitchSuggestion;
       }
       
-      // 根据功能支持情况提供建议
-      const supportRate = getSupportRate();
-      
-      if (supportRate <= 50) {
-        featureSuggestion = '你的浏览器仅支持 ' + supportRate + '% 的现代 Web 特性，大多数现代网站可能无法正常工作。';
-      } else if (supportRate <= 70) {
-        featureSuggestion = '你的浏览器支持 ' + supportRate + '% 的现代 Web 特性，许多新型网站可能会出现兼容性问题。';
-      } else if (supportRate <= 85) {
-        featureSuggestion = '你的浏览器支持 ' + supportRate + '% 的现代 Web 特性，大部分网站能正常使用，但可能缺少一些新功能。';
-      } else if (supportRate < 95) {
-        featureSuggestion = '你的浏览器支持 ' + supportRate + '% 的现代 Web 特性，能够流畅使用大多数网站。';
-      } else {
-        featureSuggestion = '你的浏览器支持 ' + supportRate + '% 的现代 Web 特性，能够流畅使用绝大多数网站。';
+      // 只有在非伪装版本的情况下才生成基于特性支持率的建议
+      if (!isFakeVersion) {
+        // 根据功能支持情况提供建议
+        const supportRate = getSupportRate();
+        
+        if (supportRate <= 50) {
+          featureSuggestion = '你的浏览器仅支持 ' + supportRate + '% 的现代 Web 特性，大多数现代网站可能无法正常工作。';
+        } else if (supportRate <= 70) {
+          featureSuggestion = '你的浏览器支持 ' + supportRate + '% 的现代 Web 特性，许多新型网站可能会出现兼容性问题。';
+        } else if (supportRate <= 85) {
+          featureSuggestion = '你的浏览器支持 ' + supportRate + '% 的现代 Web 特性，大部分网站能正常使用，但可能缺少一些新功能。';
+        } else if (supportRate < 95) {
+          featureSuggestion = '你的浏览器支持 ' + supportRate + '% 的现代 Web 特性，能够流畅使用大多数网站。';
+        } else {
+          featureSuggestion = '你的浏览器支持 ' + supportRate + '% 的现代 Web 特性，能够流畅使用绝大多数网站。';
+        }
       }
       
       // 组合建议
-      recommendation.value = featureSuggestion;
-      
-      if (upgradeSuggestion) {
-        recommendation.value += ' ' + upgradeSuggestion;
+      if (isFakeVersion) {
+        // 伪装版本只显示内核警告
+        recommendation.value = upgradeSuggestion;
+      } else {
+        // 非伪装版本显示特性支持率和内核建议
+        recommendation.value = featureSuggestion;
+        
+        if (upgradeSuggestion) {
+          recommendation.value += ' ' + upgradeSuggestion;
+        }
       }
       
       console.log('[浏览器检测] - 生成的建议:', recommendation.value);
@@ -642,7 +683,8 @@ const app = createApp({
       getSupportedFeaturesCount,
       getUnsupportedFeaturesCount,
       getSupportRate,
-      switchSuggestion
+      switchSuggestion,
+      isMobileDevice
     };
   }
 });

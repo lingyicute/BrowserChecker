@@ -354,6 +354,14 @@ body {
   color: #64748b;
 }
 
+/* 移动设备检测提示 */
+.mobile-notice {
+  background-color: #f0f9ff;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-top: 12px;
+}
+
 .features-recommendation {
   background: white;
   padding: 16px;

@@ -71,6 +71,9 @@
               <div class="stat-label">支持率</div>
             </div>
           </div>
+          <div v-if="isMobileDevice" class="mobile-notice">
+            <p>⚙️ 检测到移动设备，已自动跳过部分检测项</p>
+          </div>
         </div>
       </div>
       
