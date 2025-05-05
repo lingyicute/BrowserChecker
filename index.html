@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>浏览器检查</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <!-- 加载动画覆盖层 -->
+    <div class="loading-overlay">
+      <div class="loading-content">
+        <div class="loader"></div>
+        <div class="loading-text">正在检测浏览器性能...</div>
+      </div>
+    </div>
+    
+    <div class="container" :class="{ 'content-loaded': !isLoading }">
+      <!-- 分数部分 -->
+      <div class="score-wrapper">
+        <div class="score-section block-item block-score">
+          <div class="score-container">
+            <div class="score" :class="scoreColorClass">{{ displayScore }}</div>
+            <div class="score-text">浏览器得分</div>
+          </div>
+          <div class="animation-container">
+            <div class="circle-loader" :style="{ background: scoreColorGradient }"></div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 国产/套壳浏览器警告块 -->
+      <div v-if="browserType === '国产浏览器' || browserType === '套壳浏览器'" 
+           class="block-item block-warning">
+        <div class="warning-icon">⚠️</div>
+        <div class="warning-content">
+          <h3>检测到{{ browserType }}</h3>
+          <p>{{ switchSuggestion }}</p>
+        </div>
+      </div>
+      
+      <!-- 内核版本及建议块 -->
+      <div class="block-item block-engine">
+        <h3>浏览器内核信息</h3>
+        <div class="browser-info">
+          <p><strong>浏览器类型：</strong>{{ browserType }}</p>
+          <p v-if="isChromeEngine"><strong>Chromium 内核版本：</strong>{{ chromeVersion }}</p>
+          <div class="engine-recommendation">
+            <p>{{ recommendation }}</p>
+          </div>
+          <p class="user-agent"><strong>浏览器 User-Agent：</strong>{{ userAgent }}</p>
+        </div>
+      </div>
+      
+      <!-- 现代特性支持情况及建议块 -->
+      <div class="block-item block-features">
+        <h3>现代 Web 特性支持情况</h3>
+        <div class="features-summary">
+          <div class="feature-stats">
+            <div class="stat-item">
+              <div class="stat-value">{{ getSupportedFeaturesCount() }}</div>
+              <div class="stat-label">支持特性</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value">{{ getUnsupportedFeaturesCount() }}</div>
+              <div class="stat-label">不支持特性</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value">{{ getSupportRate() }}%</div>
+              <div class="stat-label">支持率</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 详细检测结果块 -->
+      <div class="block-item block-details">
+        <h3>详细检测结果</h3>
+        <div class="detail-items-container">
+          <div class="detail-item" v-for="(item, index) in detectionResults" :key="index">
+            <div class="detail-name">{{ item.name }}</div>
+            <div class="detail-status" :class="{ supported: item.supported }">
+              {{ item.supported ? '支持' : '不支持' }}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <script src="https://cdn.jsdelivr.net/npm/vue@3.5.13/dist/vue.global.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html> 
