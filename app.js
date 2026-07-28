@@ -129,7 +129,7 @@ const app = createApp({
         { name: 'Payment Request API', test: () => 'PaymentRequest' in window },
         { name: 'Pointer Events', test: () => 'PointerEvent' in window },
         { name: 'Web Audio API', test: () => 'AudioContext' in window || 'webkitAudioContext' in window },
-        { name: 'WebVR/WebXR', test: () => 'getVRDisplays' in navigator || 'xr' in navigator },
+        { name: 'WebXR Device API', test: () => 'xr' in navigator },
         { name: 'WebUSB', test: () => 'usb' in navigator },
         { name: 'Web Bluetooth', test: () => 'bluetooth' in navigator },
         { name: 'WebAuthn', test: () => 'credentials' in navigator && 'PublicKeyCredential' in window },
@@ -183,11 +183,14 @@ const app = createApp({
         { name: 'Reporting API', test: () => 'ReportingObserver' in window },
         { name: 'Screen Wake Lock API', test: () => 'wakeLock' in navigator },
         { name: 'EyeDropper API', test: () => 'EyeDropper' in window },
-        { name: 'ScrollTimeline API', test: () => {
-          return 'ScrollTimeline' in window || 'ViewTimeline' in window;
-        }},
+        { name: 'ScrollTimeline / ViewTimeline', test: () => 'ScrollTimeline' in window || 'ViewTimeline' in window },
         { name: 'MediaSession API', test: () => 'mediaSession' in navigator },
-        { name: 'Credential Management API', test: () => 'credentials' in navigator }
+        { name: 'Credential Management API', test: () => 'credentials' in navigator },
+        // --- 针对 Chromium 120-150 新增的新特性检测 ---
+        { name: 'Popover API', test: () => 'popover' in HTMLElement.prototype },
+        { name: 'View Transitions API', test: () => 'startViewTransition' in document },
+        { name: 'CSS light-dark()', test: () => !!(window.CSS && CSS.supports('color: light-dark(white, black)')) },
+        { name: 'Speculation Rules API', test: () => HTMLScriptElement.supports && HTMLScriptElement.supports('speculationrules') }
       ];
       
       // 检测每项功能并记录结果
@@ -200,7 +203,7 @@ const app = createApp({
         }
         
         if (!supported) {
-          totalScore.value -= 3;
+          totalScore.value -= 2; // 微调扣分系数，适应更多检测项
         }
         return {
           name: feature.name,
@@ -252,6 +255,8 @@ const app = createApp({
       if (chromeMatch && chromeMatch[1]) {
         isChromeEngine.value = true;
         const reportedVersion = parseInt(chromeMatch[1], 10);
+        
+        // 国内/WebView如果汇报高于110，判定为虚标伪装
         const isUnreliableVersion = (isChinaBrowser || isWebView) && reportedVersion > 110;
         
         const realVersion = isUnreliableVersion ? 103 : reportedVersion;
@@ -263,17 +268,19 @@ const app = createApp({
         }
         
         const version = realVersion;
-        if (version >= 131 && version <= 132) {
+        
+        // 版本打分阶梯
+        if (version >= 145 && version <= 150) {
+          // 最新的 145 - 150 版本，不扣分
+        } else if (version >= 138 && version <= 144) {
           totalScore.value -= 10;
-        } else if (version >= 126 && version <= 130) {
-          totalScore.value -= 15;
-        } else if (version >= 121 && version <= 125) {
+        } else if (version >= 130 && version <= 137) {
           totalScore.value -= 20;
-        } else if (version >= 111 && version <= 120) {
+        } else if (version >= 120 && version <= 129) {
           totalScore.value -= 30;
-        } else if (version >= 101 && version <= 110) {
+        } else if (version >= 110 && version <= 119) {
           totalScore.value -= 40;
-        } else if (version <= 100) {
+        } else if (version < 110) {
           totalScore.value -= 50;
         }
       }
@@ -298,20 +305,20 @@ const app = createApp({
         if (typeof chromeVersion.value === 'string' && chromeVersion.value.includes('伪装')) {
           version = 103;
           isFakeVersion = true;
-          upgradeSuggestion = `你的浏览器正在恶意伪装更高版本，实际使用的是严重过时的 Chromium 内核（估计为103），存在重大安全风险，强烈建议切换到原生 Chrome、Iridium 或 Firefox 浏览器。`;
+          upgradeSuggestion = `你的浏览器正在恶意伪装更高版本，实际使用的是严重过时的 Chromium 内核（估测为 103 左右），存在重大安全风险。梨强烈建议你立即切换到原生 Chrome、Iridium、Brave 或 Firefox 浏览器。`;
         } else {
           version = Number(chromeVersion.value) || 0;
           
-          if (version <= 115) {
-            upgradeSuggestion = '你的浏览器内核版本已严重过时（Chromium ' + version + '），存在重大安全风险，强烈建议立即升级浏览器。';
-          } else if (version <= 122) {
-            upgradeSuggestion = '你的浏览器内核版本有些落后（Chromium ' + version + '），建议升级到最新版本以获得更好的性能和安全保障。';
-          } else if (version <= 130) {
-            upgradeSuggestion = '你的浏览器内核版本（Chromium ' + version + '）略有落后，建议适时更新。';
-          } else if (version <= 132) {
-            upgradeSuggestion = '你的浏览器内核版本（Chromium ' + version + '）较新，但仍可更新以获得最佳的性能和安全保障。';
+          if (version <= 120) {
+            upgradeSuggestion = '你的浏览器内核版本已严重过时（Chromium ' + version + '），与最新的 Chromium 相比缺失大量核心安全补丁。梨强烈建议你立即升级浏览器。';
+          } else if (version <= 135) {
+            upgradeSuggestion = '你的浏览器内核版本落后较多（Chromium ' + version + '）。梨建议你升级到最新的 Chrome、Iridium、Brave 或 Firefox 浏览器以获得更好的性能和安全保障。';
+          } else if (version <= 144) {
+            upgradeSuggestion = '你的浏览器内核版本（Chromium ' + version + '）有些落后，建议适时更新。';
+          } else if (version <= 149) {
+            upgradeSuggestion = '你的浏览器内核版本（Chromium ' + version + '）较新，但梨仍然建议你更新至最新的 Chrome、Iridium、Brave 或 Firefox 浏览器以获得最佳性能和安全性。';
           } else {
-            upgradeSuggestion = '你的浏览器内核版本（Chromium ' + version + '）非常新，可以体验最前沿的网络技术。';
+            upgradeSuggestion = '你的浏览器内核版本（Chromium ' + version + '）处于最新前沿，能够体验最先进的网络技术。';
           }
         }
       } else {
@@ -319,10 +326,10 @@ const app = createApp({
       }
       
       if (browserType.value === '国产浏览器') {
-        localSwitchSuggestion = '你正在使用国产定制浏览器，它们基于主流浏览器二次开发，往往充斥着各类广告和骚扰内容，且存在较大的隐私和安全风险。建议你切换到原生 Chrome、Iridium 或 Firefox 浏览器以获得更清爽、稳定和安全的体验。';
+        localSwitchSuggestion = '你正在使用国产定制浏览器，它们基于主流浏览器二次开发，往往充斥着各类广告和骚扰内容，且存在较大的隐私和安全风险。梨建议你切换到原生 Chrome、Edge、Brave 或 Firefox 浏览器以获得更清爽、稳定和安全的体验。';
         switchSuggestion.value = localSwitchSuggestion;
       } else if (browserType.value === '套壳浏览器') {
-        localSwitchSuggestion = '你正在使用 App 内置浏览器，它们通常更新不及时、受到功能上的限制，且存在较大的隐私和安全风险。建议你使用原生 Chrome、Iridium 或 Firefox 浏览器以获得更稳定和安全的体验。';
+        localSwitchSuggestion = '你正在使用 App 内置浏览器，它们通常更新不及时、受到功能上的限制，且存在较大的隐私和安全风险。梨建议你使用原生 Chrome、Edge 或 Firefox 浏览器以获得更稳定和安全的体验。';
         switchSuggestion.value = localSwitchSuggestion;
       }
       
@@ -338,7 +345,7 @@ const app = createApp({
         } else if (supportRate < 95) {
           featureSuggestion = '你的浏览器支持 ' + supportRate + '% 的现代 Web 特性，能够流畅使用大多数网站。';
         } else {
-          featureSuggestion = '你的浏览器支持 ' + supportRate + '% 的现代 Web 特性，能够流畅使用绝大多数网站。';
+          featureSuggestion = '你的浏览器支持 ' + supportRate + '% 的现代 Web 特性，能够流畅体验几乎所有最新的 Web 功能。';
         }
       }
       
