@@ -455,45 +455,88 @@ body {
   color: #22c55e;
 }
 
+.detail-status.skipped {
+  background-color: #f1f5f9;
+  color: #64748b;
+}
+
+.detail-item-skipped .detail-name {
+  color: #94a3b8;
+}
+
+.detail-reason {
+  display: block;
+  font-size: 12px;
+  color: #94a3b8;
+  margin-top: 2px;
+}
+
+/* 跳过原因汇总 */
+.skip-notices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.skip-notice-item {
+  font-size: 12px;
+  color: #475569;
+  background: white;
+  border-radius: 999px;
+  padding: 4px 12px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+}
+
+.notice-insecure {
+  background-color: #fef2f2;
+  color: #991b1b;
+}
+
+.notice-local-file {
+  background-color: #eff6ff;
+  color: #1e40af;
+}
+
 /* 响应式调整 */
 @media (max-width: 768px) {
   .score {
     font-size: 72px;
   }
-  
+
   .block-item.score-section {
     padding: 60px 0 43px;
   }
-  
+
   .animation-container {
     width: 200px;
     height: 200px;
   }
-  
+
   .block-warning {
     flex-direction: column;
     align-items: flex-start;
     padding: 16px;
   }
-  
+
   .detail-item {
     flex-wrap: wrap;
   }
-  
+
   .detail-name {
     width: 100%;
     margin-bottom: 5px;
     padding-right: 0;
   }
-  
+
   .detail-status {
     margin-left: auto;
   }
-  
+
   .container {
     padding: 12px;
   }
-  
+
   .block-item {
     padding: 16px;
   }
@@ -503,11 +546,11 @@ body {
   .score {
     font-size: 60px;
   }
-  
+
   .block-item.score-section {
     padding: 55px 0 33px;
   }
-  
+
   .feature-stats {
     flex-direction: column;
     gap: 8px;
@@ -517,4 +560,4 @@ body {
     width: 180px;
     height: 180px;
   }
-} 
+}
