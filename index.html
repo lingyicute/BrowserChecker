@@ -15,7 +15,7 @@
         <div class="loading-text">正在检测浏览器性能...</div>
       </div>
     </div>
-    
+
     <div class="container" :class="{ 'content-loaded': !isLoading }">
       <!-- 分数部分 -->
       <div class="score-wrapper">
@@ -29,9 +29,9 @@
           </div>
         </div>
       </div>
-      
+
       <!-- 国产/套壳浏览器警告块 -->
-      <div v-if="browserType === '国产浏览器' || browserType === '套壳浏览器'" 
+      <div v-if="browserType === '国产浏览器' || browserType === '套壳浏览器'"
            class="block-item block-warning">
         <div class="warning-icon">⚠️</div>
         <div class="warning-content">
@@ -39,7 +39,7 @@
           <p>{{ switchSuggestion }}</p>
         </div>
       </div>
-      
+
       <!-- 内核版本及建议块 -->
       <div class="block-item block-engine">
         <h3>浏览器内核信息</h3>
@@ -52,7 +52,7 @@
           <p class="user-agent"><strong>浏览器 User-Agent：</strong>{{ userAgent }}</p>
         </div>
       </div>
-      
+
       <!-- 现代特性支持情况及建议块 -->
       <div class="block-item block-features">
         <h3>现代 Web 特性支持情况</h3>
@@ -70,29 +70,47 @@
               <div class="stat-value">{{ getSupportRate() }}%</div>
               <div class="stat-label">支持率</div>
             </div>
+            <div class="stat-item" v-if="getSkippedFeaturesCount() > 0">
+              <div class="stat-value">{{ getSkippedFeaturesCount() }}</div>
+              <div class="stat-label">已跳过</div>
+            </div>
           </div>
           <div v-if="isMobileDevice" class="mobile-notice">
-            <p>⚙️ 检测到移动设备，已自动跳过部分检测项</p>
+            <p>⚙️ 检测到{{ isIOSDevice ? ' iOS ' : '' }}移动设备，已自动跳过当前平台不适用的检测项，跳过项不计入评分</p>
+          </div>
+          <div v-if="isFileOrigin" class="mobile-notice notice-local-file">
+            <p>📄 当前页面通过 file:// 本地打开，依赖网站来源或安全上下文的 API 已跳过。请通过 HTTPS 或 localhost 访问以获得完整结果</p>
+          </div>
+          <div v-if="!isSecureContext && !isFileOrigin" class="mobile-notice notice-insecure">
+            <p>🔒 当前页面不在安全上下文中，依赖安全上下文的 API 已跳过。请通过 HTTPS 或 localhost 访问以获得完整结果</p>
+          </div>
+          <div v-if="skipNotices.length" class="skip-notices">
+            <span class="skip-notice-item" v-for="(notice, index) in skipNotices" :key="index">
+              {{ notice.reason }} × {{ notice.count }}
+            </span>
           </div>
         </div>
       </div>
-      
+
       <!-- 详细检测结果块 -->
       <div class="block-item block-details">
         <h3>详细检测结果</h3>
         <div class="detail-items-container">
-          <div class="detail-item" v-for="(item, index) in detectionResults" :key="index">
-            <div class="detail-name">{{ item.name }}</div>
-            <div class="detail-status" :class="{ supported: item.supported }">
-              {{ item.supported ? '支持' : '不支持' }}
+          <div class="detail-item" :class="{ 'detail-item-skipped': item.skipped }" v-for="item in detectionResults" :key="item.name">
+            <div class="detail-name">
+              {{ item.name }}
+              <span v-if="item.skipped" class="detail-reason">{{ item.reason }}</span>
+            </div>
+            <div class="detail-status" :class="{ supported: item.supported, skipped: item.skipped }">
+              {{ getStatusText(item) }}
             </div>
           </div>
         </div>
       </div>
     </div>
   </div>
-  
+
   <script src="https://cdn.jsdelivr.net/npm/vue@3.5.13/dist/vue.global.min.js"></script>
   <script src="app.js"></script>
 </body>
-</html> 
+</html>
