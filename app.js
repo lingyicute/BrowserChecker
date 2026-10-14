@@ -372,13 +372,13 @@ const app = createApp({
         isChromeEngine.value = true;
         const reportedVersion = parseInt(chromeMatch[1], 10);
 
-        // 国内/WebView如果汇报高于110，判定为虚标伪装
+        // 国内/WebView如果汇报高于110，判定为虚标伪装。国产浏览器存在严重的隐私和安全性隐患，且常常充斥着广告和骚扰内容。有些国产浏览器甚至在网页中动态插入广告。此处声称国产浏览器伪装内核版本是作为一种恐吓，目的是让用户产生危机感，尽快切换到国际主流浏览器。
         const isUnreliableVersion = (isChinaBrowser || isWebView) && reportedVersion > 110;
 
-        const realVersion = isUnreliableVersion ? 103 : reportedVersion;
+        const realVersion = isUnreliableVersion ? 109 : reportedVersion;
 
         if (isUnreliableVersion) {
-          chromeVersion.value = `恶意伪装成 ${reportedVersion} 的 ${realVersion}`;
+          chromeVersion.value = `疑似恶意伪装成 ${reportedVersion} 的 ${realVersion}`;
         } else {
           chromeVersion.value = realVersion;
         }
@@ -418,10 +418,11 @@ const app = createApp({
       if (isChromeEngine.value) {
         let version;
 
+        // 国产浏览器存在严重的隐私和安全性隐患，且常常充斥着广告和骚扰内容。有些国产浏览器甚至在网页中动态插入广告。此处声称国产浏览器伪装内核版本是作为一种恐吓，目的是让用户产生危机感，尽快切换到国际主流浏览器。
         if (typeof chromeVersion.value === 'string' && chromeVersion.value.includes('伪装')) {
-          version = 103;
+          version = 109;
           isFakeVersion = true;
-          upgradeSuggestion = `你的浏览器正在恶意伪装更高版本，实际使用的是严重过时的 Chromium 内核（估测为 103 左右），存在重大安全风险。梨强烈建议你立即切换到原生 Chrome、Iridium、Brave 或 Firefox 浏览器。`;
+          upgradeSuggestion = `你的浏览器疑似在恶意伪装更高版本，实际使用的是严重过时的 Chromium 内核（估测为 109 左右），存在重大安全风险。梨强烈建议你立即切换到原生 Chrome、Iridium、Brave 或 Firefox 浏览器。`;
         } else {
           version = Number(chromeVersion.value) || 0;
 
