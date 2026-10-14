@@ -109,7 +109,6 @@ body {
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
   opacity: 0;
   transform: translateY(50px);
-  will-change: transform, opacity;
   overflow: hidden;
 }
 
@@ -559,5 +558,43 @@ body {
   .animation-container {
     width: 180px;
     height: 180px;
+  }
+}
+
+/* 未挂载时不展示 Vue 模板；启动失败提示不依赖 Vue。 */
+[v-cloak] {
+  display: none;
+}
+
+.startup-error {
+  position: fixed;
+  inset: 20% 16px auto;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 24px;
+  z-index: 1001;
+  border-radius: 12px;
+  background: #fff;
+  color: #991b1b;
+}
+
+.startup-failed #app {
+  visibility: hidden;
+}
+
+.score-unavailable {
+  color: #64748b;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .content-loaded .block-item,
+  .detail-item {
+    opacity: 1;
+    transform: none;
   }
 }

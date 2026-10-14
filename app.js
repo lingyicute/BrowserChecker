@@ -12,6 +12,7 @@ const app = createApp({
     const recommendation = ref('');
     const switchSuggestion = ref('');
     const isLoading = ref(true);
+    const detectionError = ref(false);
     const displayScore = ref(0);
     const isMobileDevice = ref(false);
     const isIOSDevice = ref(false);
@@ -23,6 +24,7 @@ const app = createApp({
 
     // 计算属性：分数颜色样式
     const scoreColorClass = computed(() => {
+      if (detectionError.value) return 'score-unavailable';
       if (totalScore.value === 100) return 'score-green';
       if (totalScore.value >= 80) return 'score-yellow';
       if (totalScore.value >= 70) return 'score-orange';
@@ -31,6 +33,7 @@ const app = createApp({
 
     // 计算属性：动画背景颜色
     const scoreColorGradient = computed(() => {
+      if (detectionError.value) return 'radial-gradient(circle, #94a3b8, #64748b)';
       if (totalScore.value === 100) return 'radial-gradient(circle, #22c55e, #16a34a)';
       if (totalScore.value >= 80) return 'radial-gradient(circle, #eab308, #ca8a04)';
       if (totalScore.value >= 70) return 'radial-gradient(circle, #f97316, #ea580c)';
@@ -38,28 +41,35 @@ const app = createApp({
     });
 
     // 参与计分的检测项（排除已跳过项）
-    const getEvaluatedResults = () => detectionResults.value.filter(item => !item.skipped);
+    // 缓存统计结果，避免分数动画每一帧都重复遍历检测项。
+    const featureStats = computed(() => {
+      const stats = { supported: 0, unsupported: 0, skipped: 0 };
+      detectionResults.value.forEach(item => {
+        stats[item.skipped ? 'skipped' : (item.supported ? 'supported' : 'unsupported')]++;
+      });
+      return stats;
+    });
 
     // 获取支持的特性数量
     const getSupportedFeaturesCount = () => {
-      return getEvaluatedResults().filter(item => item.supported).length;
+      return featureStats.value.supported;
     };
 
     // 获取不支持的特性数量
     const getUnsupportedFeaturesCount = () => {
-      return getEvaluatedResults().filter(item => !item.supported).length;
+      return featureStats.value.unsupported;
     };
 
     // 获取跳过的特性数量
     const getSkippedFeaturesCount = () => {
-      return detectionResults.value.filter(item => item.skipped).length;
+      return featureStats.value.skipped;
     };
 
     // 获取特性支持率（百分比，不计入跳过项）
     const getSupportRate = () => {
-      const evaluated = getEvaluatedResults();
-      if (!evaluated.length) return 0;
-      return Math.round((getSupportedFeaturesCount() / evaluated.length) * 100);
+      const { supported, unsupported } = featureStats.value;
+      const evaluated = supported + unsupported;
+      return evaluated ? Math.round((supported / evaluated) * 100) : 0;
     };
 
     // 检测项状态文字
@@ -69,7 +79,21 @@ const app = createApp({
     };
 
     // 数字滚动动画
+    const prefersReducedMotion = () => {
+      try {
+        return typeof window.matchMedia === 'function' &&
+          window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      } catch (e) {
+        return false;
+      }
+    };
+
     const animateScore = () => {
+      // 动画是展示增强；缺少正在检测的 API 不能反过来破坏检测结果。
+      if (typeof window.requestAnimationFrame !== 'function' || prefersReducedMotion()) {
+        displayScore.value = totalScore.value;
+        return;
+      }
       const duration = 1500; // 动画持续时间(毫秒)
       const startTime = Date.now();
       const targetScore = totalScore.value;
@@ -79,7 +103,7 @@ const app = createApp({
         const elapsed = currentTime - startTime;
 
         if (elapsed < duration) {
-          // 使用easeOutExpo缓动函数使动画更加自然
+          // 使用 easeOutQuart 缓动函数使动画更加自然
           const progress = 1 - Math.pow(1 - (elapsed / duration), 4);
           displayScore.value = Math.round(progress * targetScore);
           requestAnimationFrame(updateScore);
@@ -146,14 +170,73 @@ const app = createApp({
       return null;
     };
 
-    // 图片解码检测
+    // 图片解码检测：超时 / CSP 拦截属于无法评估，不应当作为格式不支持扣分。
     const testImageDecode = (dataUri) => new Promise((resolve) => {
       const img = new Image();
-      const timer = setTimeout(() => resolve(false), 2000);
-      img.onload = () => { clearTimeout(timer); resolve(img.width > 0 && img.height > 0); };
-      img.onerror = () => { clearTimeout(timer); resolve(false); };
+      let settled = false;
+      let errorTimer;
+      const finish = (result) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        clearTimeout(errorTimer);
+        img.onload = img.onerror = null;
+        document.removeEventListener('securitypolicyviolation', onPolicyViolation);
+        img.removeAttribute('src');
+        resolve(result);
+      };
+      const onPolicyViolation = (event) => {
+        if (event.disposition === 'enforce' && event.effectiveDirective === 'img-src' &&
+            (event.blockedURI === 'data' || event.blockedURI === dataUri)) {
+          finish({ skipped: true, reason: '图片解码样本被内容安全策略（CSP）阻止' });
+        }
+      };
+      const timer = setTimeout(() => finish({
+        skipped: true, reason: '图片解码超时，无法评估当前格式支持情况'
+      }), 2000);
+      document.addEventListener('securitypolicyviolation', onPolicyViolation);
+      img.onload = () => finish(img.naturalWidth > 0 && img.naturalHeight > 0);
+      // 给异步 CSP 事件留出时间；普通解码失败仍然标记为不支持。
+      img.onerror = () => { errorTimer = setTimeout(() => finish(false), 100); };
       img.src = dataUri;
     });
+
+    // 仅检查属性存在会把被禁用的存储误报为可用；探测后只删除自己的临时键。
+    const testStorage = () => {
+      for (const name of ['localStorage', 'sessionStorage']) {
+        let storage;
+        let key;
+        let written = false;
+        try {
+          storage = window[name];
+          if (!storage || typeof storage.setItem !== 'function') return false;
+          key = '__browserchecker_probe__';
+          while (storage.getItem(key) !== null) key += '_';
+          storage.setItem(key, key);
+          written = true;
+          if (storage.getItem(key) !== key) return false;
+        } catch (error) {
+          if (error.name === 'SecurityError' || error.name === 'QuotaExceededError' ||
+              error.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
+            return { skipped: true, reason: '网站存储被安全策略限制或配额已用尽' };
+          }
+          return false;
+        } finally {
+          if (written) {
+            try { storage.removeItem(key); } catch (e) { /* 策略可能在检测期间变化。 */ }
+          }
+        }
+      }
+      return true;
+    };
+
+    const releaseWebGLContext = (context) => {
+      if (!context) return;
+      try {
+        const extension = context.getExtension('WEBGL_lose_context');
+        if (extension) extension.loseContext();
+      } catch (e) { /* 清理失败不改变已经取得的检测结果。 */ }
+    };
 
     const WEBP_SAMPLE = 'data:image/webp;base64,UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==';
     const AVIF_SAMPLE = 'data:image/avif;base64,AAAAIGZ0eXBhdmlmAAAAAGF2aWZtaWYxbWlhZk1BMUIAAADybWV0YQAAAAAAAAAoaGRscgAAAAAAAAAAcGljdAAAAAAAAAAAAAAAAGxpYmF2aWYAAAAADnBpdG0AAAAAAAEAAAAeaWxvYwAAAABEAAABAAEAAAABAAABGgAAAB0AAAAoaWluZgAAAAAAAQAAABppbmZlAgAAAAABAABhdjAxQ29sb3IAAAAAamlwcnAAAABLaXBjbwAAABRpc3BlAAAAAAAAAAIAAAACAAAAEHBpeGkAAAAAAwgICAAAAAxhdjFDgQ0MAAAAABNjb2xybmNseAACAAIAAYAAAAAXaXBtYQAAAAAAAAABAAEEAQKDBAAAACVtZGF0EgAKCBgANogQEAwgMg8f8D///8WfhwB8+ErK42A=';
@@ -202,7 +285,10 @@ const app = createApp({
           let gl2 = null;
           let gl1 = null;
           try { gl2 = canvas.getContext('webgl2'); } catch (e) { gl2 = null; }
-          if (gl2) return true;
+          if (gl2) {
+            releaseWebGLContext(gl2);
+            return true;
+          }
           try {
             gl1 = document.createElement('canvas').getContext('webgl') ||
                   document.createElement('canvas').getContext('experimental-webgl');
@@ -210,6 +296,7 @@ const app = createApp({
           if (!gl1) {
             return { skipped: true, reason: '当前环境无法创建 WebGL 上下文，无法评估' };
           }
+          releaseWebGLContext(gl1);
           return false;
         }},
         { name: 'WebRTC', test: () => !!(window.RTCPeerConnection || window.webkitRTCPeerConnection) },
@@ -222,7 +309,7 @@ const app = createApp({
         { name: 'WebUSB', secure: true, skipOnIOS: true, test: () => 'usb' in navigator },
         { name: 'Web Bluetooth', secure: true, skipOnIOS: true, test: () => 'bluetooth' in navigator },
         { name: 'WebAuthn', secure: true, test: () => 'credentials' in navigator && 'PublicKeyCredential' in window },
-        { name: 'Geolocation API', test: () => 'geolocation' in navigator },
+        { name: 'Geolocation API', secure: true, test: () => 'geolocation' in navigator },
         { name: 'IndexedDB', test: () => 'indexedDB' in window },
         { name: 'Web Notifications', secure: true,
           // iOS 的 Notifications API 主要面向已添加到主屏幕的 Web App。
@@ -231,8 +318,9 @@ const app = createApp({
             ? 'iOS 普通标签页不支持，请添加到主屏幕后再检测'
             : null,
           test: () => 'Notification' in window },
-        { name: 'Screen Orientation API', test: () => 'orientation' in screen || 'orientation' in window },
-        { name: 'Gamepad API', test: () => 'getGamepads' in navigator },
+        { name: 'Screen Orientation API', test: () => !!(screen.orientation &&
+          typeof screen.orientation.type === 'string' && typeof screen.orientation.angle === 'number') },
+        { name: 'Gamepad API', secure: true, test: () => 'getGamepads' in navigator },
         { name: 'Web Components', test: () => 'customElements' in window },
         { name: '支持视频格式 WebM', test: () => {
           const video = document.createElement('video');
@@ -248,8 +336,8 @@ const app = createApp({
                     audio.canPlayType('audio/mp4; codecs="mp4a.40.2"') ||
                     audio.canPlayType('audio/x-m4a'));
         }},
-        { name: 'requestAnimationFrame', test: () => 'requestAnimationFrame' in window },
-        { name: 'Storage API', test: () => 'localStorage' in window && 'sessionStorage' in window },
+        { name: 'requestAnimationFrame', test: () => typeof window.requestAnimationFrame === 'function' },
+        { name: 'Storage API', test: testStorage },
         { name: 'Clipboard API', secure: true, test: () => typeof navigator.clipboard !== 'undefined' },
         { name: 'ResizeObserver', test: () => 'ResizeObserver' in window },
         { name: 'Performance API', test: () => 'performance' in window },
@@ -352,7 +440,7 @@ const app = createApp({
       } else if (isChinaBrowser) {
         browserType.value = '国产浏览器';
         totalScore.value -= 30;
-      } else if (/firefox/i.test(ua)) {
+      } else if (/firefox|fxios/i.test(ua)) {
         browserType.value = 'Firefox';
       } else if (/edg|edge/i.test(ua)) {
         browserType.value = 'Edge';
@@ -477,43 +565,36 @@ const app = createApp({
       }
     };
 
-    // 收尾：淡出加载动画
+    // 收尾不依赖动画事件，后台标签页和减少动态效果模式也能正常结束。
     const finishLoading = () => {
+      if (window.browserCheckerStartup) window.browserCheckerStartup.complete();
       document.querySelector('.loading-overlay')?.classList.add('fade-out');
       setTimeout(() => {
         isLoading.value = false;
-      }, 800);
+      }, prefersReducedMotion() ? 0 : 800);
     };
 
-    // 页面加载时运行检测
-    onMounted(() => {
+    // 页面加载后立即检测，无需人为等待一秒。
+    onMounted(async () => {
       console.log('[浏览器检测] - 初始化检测');
-      detectEnvironment();
-
-      setTimeout(async () => {
-        try {
-          // 重置分数基准
-          totalScore.value = 100;
-
-          await checkModernFeatures();
-          detectBrowserInfo();
-
-          setTimeout(() => {
-            document.querySelectorAll('.detail-item').forEach((item, index) => {
-              item.style.animationDelay = `${index * 0.03}s`;
-            });
-          }, 100);
-
-          animateScore();
-
-          setTimeout(finishLoading, 500);
-        } catch (error) {
-          console.error('[浏览器检测] - 检测过程中发生错误:', error);
-          finishLoading();
-          displayScore.value = totalScore.value = 50;
-          recommendation.value = '检测过程中发生错误，请刷新页面重试。';
-        }
-      }, 1000);
+      try {
+        // 环境检测也可能被浏览器策略或扩展干扰，必须纳入错误收尾。
+        detectEnvironment();
+        totalScore.value = 100;
+        await checkModernFeatures();
+        detectBrowserInfo();
+        animateScore();
+      } catch (error) {
+        console.error('[浏览器检测] - 检测过程中发生错误:', error);
+        detectionError.value = true;
+        // 检测失败不是 50 分；不展示不完整的统计或误导性的评分。
+        displayScore.value = totalScore.value = null;
+        detectionResults.value = [];
+        skipNotices.value = [];
+        recommendation.value = '检测过程中发生错误，请刷新页面重试。';
+      } finally {
+        finishLoading();
+      }
     });
 
     return {
@@ -528,6 +609,7 @@ const app = createApp({
       scoreColorClass,
       scoreColorGradient,
       isLoading,
+      detectionError,
       getSupportedFeaturesCount,
       getUnsupportedFeaturesCount,
       getSkippedFeaturesCount,
