@@ -1,4 +1,3 @@
-// 创建Vue应用
 const { createApp, ref, computed, onMounted } = Vue;
 
 const app = createApp({
@@ -345,14 +344,14 @@ const app = createApp({
       console.log('[浏览器检测] - 开始分析浏览器类型和版本');
 
       const isChinaBrowser = /HeyTap|Quark|baidu|xweb|miuibrowser|mibrowser/i.test(ua);
-      const isWebView = /WeChat|MicroMessenger|QQ|xweb/i.test(ua);
+      const isWebView = /WeChat|MicroMessenger|QQ/i.test(ua);
 
-      if (isChinaBrowser) {
-        browserType.value = '国产浏览器';
-        totalScore.value -= 30;
-      } else if (isWebView) {
+      if (isWebView) {
         browserType.value = '套壳浏览器';
         totalScore.value -= 15;
+      } else if (isChinaBrowser) {
+        browserType.value = '国产浏览器';
+        totalScore.value -= 30;
       } else if (/firefox/i.test(ua)) {
         browserType.value = 'Firefox';
       } else if (/edg|edge/i.test(ua)) {
@@ -443,10 +442,10 @@ const app = createApp({
       }
 
       if (browserType.value === '国产浏览器') {
-        localSwitchSuggestion = '你正在使用国产定制浏览器，它们基于主流浏览器二次开发，往往充斥着各类广告和骚扰内容，且存在较大的隐私和安全风险。梨建议你切换到原生 Chrome、Edge、Brave 或 Firefox 浏览器以获得更清爽、稳定和安全的体验。';
+        localSwitchSuggestion = '你正在使用国产定制浏览器，它们基于主流浏览器二次开发，往往充斥着各类广告和骚扰内容，且存在较大的隐私和安全风险。梨建议你切换到原生 Chrome、Iridium、Brave 或 Firefox 浏览器以获得更清爽、稳定和安全的体验。';
         switchSuggestion.value = localSwitchSuggestion;
       } else if (browserType.value === '套壳浏览器') {
-        localSwitchSuggestion = '你正在使用 App 内置浏览器，它们通常更新不及时、受到功能上的限制，且存在较大的隐私和安全风险。梨建议你使用原生 Chrome、Edge 或 Firefox 浏览器以获得更稳定和安全的体验。';
+        localSwitchSuggestion = '你正在使用 App 内置浏览器，它们通常更新不及时、受到功能上的限制，且存在较大的隐私和安全风险。梨建议你使用原生 Chrome、Iridium、Brave 或 Firefox 浏览器以获得更稳定和安全的体验。';
         switchSuggestion.value = localSwitchSuggestion;
       }
 
