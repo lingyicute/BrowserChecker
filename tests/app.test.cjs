@@ -1,0 +1,331 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const { createHash } = require('node:crypto');
+const source = fs.readFileSync('app.js', 'utf8');
+
+function storage() {
+  const values = new Map();
+  return {
+    getItem: key => values.has(key) ? values.get(key) : null,
+    setItem: (key, value) => values.set(key, value),
+    removeItem: key => values.delete(key),
+    values
+  };
+}
+
+function harness() {
+  let state, mounted;
+  const listeners = new Map();
+  const timers = new Map();
+  let nextTimer = 0;
+  const images = [];
+  const context = {
+    console: { log() {}, error() {} },
+    navigator: { userAgent: 'Chrome/145.0.0.0', maxTouchPoints: 0 },
+    location: { protocol: 'https:' },
+    screen: { orientation: { type: 'landscape-primary', angle: 0 } },
+    HTMLElement: { prototype: {} }, HTMLScriptElement: {},
+    CSS: { supports: () => true }, URL: {},
+    Image: class {
+      constructor() { images.push(this); }
+      removeAttribute() {}
+    },
+    setTimeout: (fn, delay) => { const id = ++nextTimer; timers.set(id, { fn, delay }); return id; },
+    clearTimeout: id => timers.delete(id),
+    document: {
+      addEventListener: (name, fn) => {
+        if (!listeners.has(name)) listeners.set(name, new Set());
+        listeners.get(name).add(fn);
+      },
+      removeEventListener: (name, fn) => listeners.get(name)?.delete(fn),
+      querySelector: () => ({ classList: { add() {} } }),
+      createElement: () => ({ getContext: () => null, canPlayType: () => '' })
+    },
+    Vue: {
+      ref: value => ({ value }),
+      computed: getter => ({ get value() { return getter(); } }),
+      onMounted: fn => { mounted = fn; },
+      createApp: options => ({ mount() { state = options.setup(); } })
+    }
+  };
+  context.window = {
+    isSecureContext: true,
+    matchMedia: () => ({ matches: false }),
+    localStorage: storage(), sessionStorage: storage(),
+    CSS: context.CSS, Promise
+  };
+  // 仅在测试 VM 中暴露闭包，不增加生产脚本的公共 API。
+  const instrumented = source.replace('    return {\n      userAgent,', `
+    globalThis.internals = { detectEnvironment, getSkipReason, checkModernFeatures,
+      detectBrowserInfo, generateRecommendation, testImageDecode, testStorage,
+      releaseWebGLContext, animateScore };
+    return {\n      userAgent,`);
+  vm.runInNewContext(instrumented, context);
+  return { context, state, api: context.internals, timers, images, listeners,
+    mounted: () => mounted(),
+    runTimers(delay) {
+      for (const [id, timer] of [...timers]) {
+        if (timer.delay === delay) { timers.delete(id); timer.fn(); }
+      }
+    }
+  };
+}
+
+function completeImages(h) {
+  for (const image of h.images) {
+    image.naturalWidth = image.naturalHeight = 1;
+    if (image.onload) image.onload();
+  }
+}
+
+async function detect(h) {
+  h.api.detectEnvironment();
+  const pending = h.api.checkModernFeatures();
+  completeImages(h);
+  await pending;
+  return name => h.state.detectionResults.value.find(item => item.name === name);
+}
+
+test('protected browser policy and warning template remain byte-identical except FxiOS recognition', () => {
+  const lock = require('./fixtures/policy-lock.json');
+  const hash = text => createHash('sha256').update(text).digest('hex');
+  const policy = source.slice(source.indexOf('    // 检测浏览器类型和版本'), source.indexOf('    // 收尾'))
+    .replace('/firefox|fxios/i.test(ua)', '/firefox/i.test(ua)');
+  assert.equal(hash(policy), lock.policySha256);
+  const html = fs.readFileSync('index.html', 'utf8');
+  const warning = html.slice(html.indexOf('      <!-- 国产/套壳浏览器警告块 -->'), html.indexOf('      <!-- 内核版本及建议块 -->'));
+  assert.equal(hash(warning), lock.warningSha256);
+});
+
+test('protected classification, deduction and disguised-version boundaries (378 combinations)', () => {
+  const h = harness();
+  const markers = ['HeyTap', 'Quark', 'baidu', 'xweb', 'miuibrowser', 'mibrowser', 'WeChat', 'MicroMessenger', 'QQ'];
+  for (const marker of markers) {
+    for (const version of [109, 110, 111, 119, 120, 129, 130, 137, 138, 144, 145, 150, 151, 999]) {
+      for (const initial of [100, 90, 10]) {
+        h.context.navigator.userAgent = `${marker} Chrome/${version}.0.0.0 Safari/537.36`;
+        h.state.totalScore.value = initial;
+        h.api.detectBrowserInfo();
+        const webview = /WeChat|MicroMessenger|QQ/.test(marker);
+        assert.equal(h.state.browserType.value, webview ? '套壳浏览器' : '国产浏览器');
+        assert.equal(h.state.totalScore.value, Math.max(0, initial - (webview ? 20 : 30) - (version === 110 ? 40 : 50)));
+        assert.equal(h.state.chromeVersion.value, version > 110 ? `疑似恶意伪装成 ${version} 的 109` : version);
+        assert.ok(h.state.switchSuggestion.value.length > 0);
+        if (version > 110) assert.match(h.state.recommendation.value, /疑似在恶意伪装/);
+      }
+    }
+  }
+  h.context.navigator.userAgent = 'Quark QQ Chrome/145.0';
+  h.state.totalScore.value = 100;
+  h.api.detectBrowserInfo();
+  assert.equal(h.state.browserType.value, '套壳浏览器');
+  assert.equal(h.state.totalScore.value, 30);
+});
+
+test('Chromium version score boundaries remain unchanged', () => {
+  for (const [version, penalty] of [[109,50],[110,40],[119,40],[120,30],[129,30],[130,20],[137,20],[138,10],[144,10],[145,0],[150,0],[151,0]]) {
+    const h = harness();
+    h.context.navigator.userAgent = `Chrome/${version}.0.0.0`;
+    h.api.detectBrowserInfo();
+    assert.equal(h.state.totalScore.value, 100 - penalty);
+  }
+});
+
+test('iOS Firefox is not Safari or Chromium', () => {
+  const h = harness();
+  h.context.navigator.userAgent = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 FxiOS/143.0 Mobile/15E148 Safari/605.1.15';
+  h.api.detectEnvironment();
+  h.api.detectBrowserInfo();
+  assert.equal(h.state.browserType.value, 'Firefox');
+  assert.equal(h.state.isChromeEngine.value, false);
+  assert.equal(h.state.isIOSDevice.value, true);
+});
+
+for (const [name, ua, touches, ios, mobile] of [
+  ['iPad desktop UA', 'Macintosh', 5, true, true],
+  ['Mac', 'Macintosh', 0, false, false],
+  ['Android tablet', 'Linux; Android 15', 5, false, true],
+  ['Linux', 'X11; Linux x86_64', 0, false, false]
+]) {
+  test(`environment: ${name}`, () => {
+    const h = harness();
+    Object.assign(h.context.navigator, { userAgent: ua, maxTouchPoints: touches });
+    h.api.detectEnvironment();
+    assert.equal(h.state.isIOSDevice.value, ios);
+    assert.equal(h.state.isMobileDevice.value, mobile);
+  });
+}
+
+test('secure and file-origin exclusions; localhost remains eligible', () => {
+  const h = harness();
+  h.context.window.isSecureContext = false;
+  h.api.detectEnvironment();
+  assert.match(h.api.getSkipReason({ secure: true }), /安全上下文/);
+  h.context.location.protocol = 'file:';
+  h.context.window.isSecureContext = true;
+  h.api.detectEnvironment();
+  assert.match(h.api.getSkipReason({ secure: true }), /file:/);
+  h.context.location.protocol = 'http:';
+  h.api.detectEnvironment();
+  assert.equal(h.api.getSkipReason({ secure: true }), null);
+});
+
+test('iOS notification exception distinguishes tabs from standalone apps', async () => {
+  const h = harness();
+  h.context.navigator.userAgent = 'iPhone';
+  let find = await detect(h);
+  assert.equal(find('Web Notifications').skipped, true);
+  h.context.navigator.standalone = true;
+  find = await detect(h);
+  assert.equal(find('Web Notifications').skipped, false);
+});
+
+test('storage probe preserves existing values, including colliding probe keys', () => {
+  const h = harness();
+  for (const name of ['localStorage', 'sessionStorage']) {
+    h.context.window[name].setItem('__browserchecker_probe__', 'keep');
+    h.context.window[name].setItem('user-data', 'unchanged');
+  }
+  assert.equal(h.api.testStorage(), true);
+  for (const name of ['localStorage', 'sessionStorage']) {
+    assert.deepEqual([...h.context.window[name].values], [['__browserchecker_probe__', 'keep'], ['user-data', 'unchanged']]);
+  }
+});
+
+for (const name of ['SecurityError', 'QuotaExceededError', 'NS_ERROR_DOM_QUOTA_REACHED']) {
+  test(`storage ${name} is skipped rather than unsupported`, () => {
+    const h = harness();
+    h.context.window.sessionStorage.setItem = () => { throw { name }; };
+    assert.equal(h.api.testStorage().skipped, true);
+    assert.equal(h.context.window.localStorage.values.size, 0);
+  });
+}
+
+test('blocked storage getter is skipped; absent storage is unsupported', () => {
+  const h = harness();
+  Object.defineProperty(h.context.window, 'localStorage', { configurable: true, get() { throw { name: 'SecurityError' }; } });
+  assert.equal(h.api.testStorage().skipped, true);
+  delete h.context.window.localStorage;
+  assert.equal(h.api.testStorage(), false);
+});
+
+test('silent storage write failures are unsupported and cleaned up', () => {
+  const h = harness();
+  h.context.window.localStorage.setItem = () => {};
+  assert.equal(h.api.testStorage(), false);
+  assert.equal(h.context.window.localStorage.values.size, 0);
+});
+
+for (const outcome of ['load', 'error', 'timeout', 'csp']) {
+  test(`image ${outcome} settles once and cleans handlers, timers and CSP listener`, async () => {
+    const h = harness();
+    const promise = h.api.testImageDecode('data:image/webp;base64,test');
+    const image = h.images[0];
+    if (outcome === 'load') completeImages(h);
+    if (outcome === 'error') { image.onerror(); h.runTimers(100); }
+    if (outcome === 'timeout') h.runTimers(2000);
+    if (outcome === 'csp') {
+      image.onerror();
+      for (const fn of h.listeners.get('securitypolicyviolation')) {
+        fn({ effectiveDirective: 'img-src', blockedURI: 'data', disposition: 'enforce' });
+      }
+    }
+    const result = await promise;
+    if (outcome === 'load') assert.equal(result, true);
+    else if (outcome === 'error') assert.equal(result, false);
+    else assert.equal(result.skipped, true);
+    assert.equal(h.timers.size, 0);
+    assert.equal(h.listeners.get('securitypolicyviolation').size, 0);
+    assert.equal(image.onload, null);
+    assert.equal(image.onerror, null);
+  });
+}
+
+test('report-only or unrelated CSP violations do not skip a valid image', async () => {
+  const h = harness();
+  const promise = h.api.testImageDecode('data:image/webp;base64,test');
+  for (const fn of h.listeners.get('securitypolicyviolation')) {
+    fn({ effectiveDirective: 'img-src', blockedURI: 'data', disposition: 'report' });
+    fn({ effectiveDirective: 'script-src', blockedURI: 'data', disposition: 'enforce' });
+  }
+  completeImages(h);
+  assert.equal(await promise, true);
+});
+
+for (const mode of ['webgl2', 'webgl', 'experimental-webgl', 'none']) {
+  test(`WebGL ${mode}: correct result and immediate resource release`, async () => {
+    const h = harness();
+    let released = 0;
+    h.context.document.createElement = () => ({ getContext: name => name === mode ? {
+      getExtension: () => ({ loseContext: () => { released++; } })
+    } : null });
+    const find = await detect(h);
+    const result = find('WebGL 2.0');
+    assert.equal(result.supported, mode === 'webgl2');
+    assert.equal(result.skipped, mode === 'none');
+    assert.equal(released, mode === 'none' ? 0 : 1);
+  });
+}
+
+test('legacy window.orientation does not imply modern Screen Orientation support', async () => {
+  const h = harness();
+  h.context.screen = {};
+  h.context.window.orientation = 0;
+  const find = await detect(h);
+  assert.equal(find('Screen Orientation API').supported, false);
+});
+
+test('Geolocation and Gamepad are skipped on insecure origins', async () => {
+  const h = harness();
+  h.context.window.isSecureContext = false;
+  const find = await detect(h);
+  assert.equal(find('Geolocation API').skipped, true);
+  assert.equal(find('Gamepad API').skipped, true);
+});
+
+test('feature score, sorting, support rate and notice counts exclude skipped items', async () => {
+  const h = harness();
+  await detect(h);
+  const items = h.state.detectionResults.value;
+  assert.equal(items.length, 60);
+  const supported = items.filter(i => i.supported).length;
+  const unsupported = items.filter(i => !i.supported && !i.skipped).length;
+  assert.equal(h.state.totalScore.value, 100 - unsupported * 2);
+  assert.equal(h.state.getSupportRate(), Math.round(supported / (supported + unsupported) * 100));
+  assert.equal(h.state.getSupportedFeaturesCount(), supported);
+  assert.equal(h.state.getUnsupportedFeaturesCount(), unsupported);
+  assert.equal(h.state.getSkippedFeaturesCount(), items.length - supported - unsupported);
+  assert.equal(h.state.skipNotices.value.reduce((sum, item) => sum + item.count, 0), h.state.getSkippedFeaturesCount());
+  const rank = i => i.skipped ? 2 : (i.supported ? 0 : 1);
+  assert.deepEqual(items.map(rank), items.map(rank).sort());
+});
+
+test('missing requestAnimationFrame does not overwrite the score with 50', () => {
+  const h = harness();
+  h.state.totalScore.value = 86;
+  h.api.animateScore();
+  assert.equal(h.state.displayScore.value, 86);
+});
+
+test('reduced motion bypasses JavaScript score animation', () => {
+  const h = harness();
+  h.context.window.matchMedia = () => ({ matches: true });
+  h.context.window.requestAnimationFrame = () => { throw new Error('must not animate'); };
+  h.state.totalScore.value = 72;
+  h.api.animateScore();
+  assert.equal(h.state.displayScore.value, 72);
+});
+
+test('initialization failure always exits loading and does not invent a 50-point score', async () => {
+  const h = harness();
+  h.context.window.matchMedia = () => { throw new Error('environment failure'); };
+  await h.mounted();
+  h.runTimers(800);
+  assert.equal(h.state.isLoading.value, false);
+  assert.equal(h.state.detectionError.value, true);
+  assert.equal(h.state.totalScore.value, null);
+  assert.equal(h.state.displayScore.value, null);
+  assert.equal(h.state.detectionResults.value.length, 0);
+});

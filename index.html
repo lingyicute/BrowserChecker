@@ -7,22 +7,26 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <noscript><p class="startup-error" role="alert">此页面需要 JavaScript 才能检测浏览器，请启用后刷新。</p></noscript>
+  <p id="startup-error" class="startup-error" role="alert" hidden>
+    检测程序未能正常启动。请检查网络、脚本拦截设置或尝试更新浏览器，然后<a href="">刷新重试</a>。
+  </p>
   <div id="app">
     <!-- 加载动画覆盖层 -->
-    <div class="loading-overlay">
+    <div class="loading-overlay" v-if="isLoading" role="status" aria-live="polite">
       <div class="loading-content">
         <div class="loader"></div>
-        <div class="loading-text">正在检测浏览器性能...</div>
+        <div class="loading-text">正在检测浏览器特性...</div>
       </div>
     </div>
 
-    <div class="container" :class="{ 'content-loaded': !isLoading }">
+    <div class="container" v-cloak :class="{ 'content-loaded': !isLoading }">
       <!-- 分数部分 -->
       <div class="score-wrapper">
         <div class="score-section block-item block-score">
           <div class="score-container">
-            <div class="score" :class="scoreColorClass">{{ displayScore }}</div>
-            <div class="score-text">浏览器得分</div>
+            <div class="score" :class="scoreColorClass">{{ detectionError ? '—' : displayScore }}</div>
+            <div class="score-text">{{ detectionError ? '检测失败' : '浏览器得分' }}</div>
           </div>
           <div class="animation-container">
             <div class="circle-loader" :style="{ background: scoreColorGradient }"></div>
@@ -54,7 +58,7 @@
       </div>
 
       <!-- 现代特性支持情况及建议块 -->
-      <div class="block-item block-features">
+      <div v-if="!detectionError" class="block-item block-features">
         <h3>现代 Web 特性支持情况</h3>
         <div class="features-summary">
           <div class="feature-stats">
@@ -93,10 +97,10 @@
       </div>
 
       <!-- 详细检测结果块 -->
-      <div class="block-item block-details">
+      <div v-if="!detectionError" class="block-item block-details">
         <h3>详细检测结果</h3>
         <div class="detail-items-container">
-          <div class="detail-item" :class="{ 'detail-item-skipped': item.skipped }" v-for="item in detectionResults" :key="item.name">
+          <div class="detail-item" :class="{ 'detail-item-skipped': item.skipped }" v-for="(item, index) in detectionResults" :key="item.name" :style="{ animationDelay: `${index * 0.03}s` }">
             <div class="detail-name">
               {{ item.name }}
               <span v-if="item.skipped" class="detail-reason">{{ item.reason }}</span>
@@ -110,7 +114,9 @@
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/vue@3.5.13/dist/vue.global.min.js"></script>
-  <script src="app.js"></script>
+  <script src="startup.js"></script>
+  <script id="vue-script" defer src="https://cdn.jsdelivr.net/npm/vue@3.5.44/dist/vue.global.prod.js"
+          integrity="sha384-tORx0bXmMnTC28EYQe1coaGZKSQupXQEYDBNex8xkzJ9iqUoNy9Y+VFBhVxi4kUr" crossorigin="anonymous"></script>
+  <script id="app-script" defer src="app.js"></script>
 </body>
 </html>
