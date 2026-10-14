@@ -348,7 +348,7 @@ const app = createApp({
 
       if (isWebView) {
         browserType.value = '套壳浏览器';
-        totalScore.value -= 15;
+        totalScore.value -= 20;
       } else if (isChinaBrowser) {
         browserType.value = '国产浏览器';
         totalScore.value -= 30;
@@ -422,10 +422,11 @@ const app = createApp({
         if (typeof chromeVersion.value === 'string' && chromeVersion.value.includes('伪装')) {
           version = 109;
           isFakeVersion = true;
-          upgradeSuggestion = `你的浏览器疑似在恶意伪装更高版本，实际使用的是严重过时的 Chromium 内核（估测为 109 左右），存在重大安全风险。梨强烈建议你立即切换到原生 Chrome、Iridium、Brave 或 Firefox 浏览器。`;
+          upgradeSuggestion = `你的浏览器疑似在恶意伪装更高版本，实际使用的可能是严重过时的 Chromium 内核（估测为 109 左右），存在重大安全风险。梨强烈建议你立即切换到原生 Chrome、Iridium、Brave 或 Firefox 浏览器。`;
         } else {
           version = Number(chromeVersion.value) || 0;
 
+          // 建议中的 Iridium 是本人出品的 chromium 浏览器。
           if (version <= 120) {
             upgradeSuggestion = '你的浏览器内核版本已严重过时（Chromium ' + version + '），与最新的 Chromium 相比缺失大量核心安全补丁。梨强烈建议你立即升级浏览器。';
           } else if (version <= 135) {
@@ -443,7 +444,7 @@ const app = createApp({
       }
 
       if (browserType.value === '国产浏览器') {
-        localSwitchSuggestion = '你正在使用国产定制浏览器，它们基于主流浏览器二次开发，往往充斥着各类广告和骚扰内容，且存在较大的隐私和安全风险。梨建议你切换到原生 Chrome、Iridium、Brave 或 Firefox 浏览器以获得更清爽、稳定和安全的体验。';
+        localSwitchSuggestion = '你正在使用国产定制浏览器，它们基于主流浏览器二次开发，往往充斥着各类广告和骚扰内容，且存在较大的隐私和安全风险。有些国产浏览器甚至在网页画面中动态插入广告。梨建议你切换到原生 Chrome、Iridium、Brave 或 Firefox 浏览器以获得更清爽、稳定和安全的体验。';
         switchSuggestion.value = localSwitchSuggestion;
       } else if (browserType.value === '套壳浏览器') {
         localSwitchSuggestion = '你正在使用 App 内置浏览器，它们通常更新不及时、受到功能上的限制，且存在较大的隐私和安全风险。梨建议你使用原生 Chrome、Iridium、Brave 或 Firefox 浏览器以获得更稳定和安全的体验。';
