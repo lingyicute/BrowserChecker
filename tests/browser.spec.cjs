@@ -302,3 +302,97 @@ test('temporary local storage keys are collision-safe and cleaned after a real b
     { saved: 'keep', probes: ['__browserchecker_probe__'] }
   ]);
 });
+
+for (const property of ['mobile', 'maxTouchPoints', 'standalone']) {
+  test(`blocked optional ${property} does not abort real-browser detection`, async ({ page }) => {
+    await page.addInitScript(property => {
+      Object.defineProperty(navigator, 'userAgent', { value: 'Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15 Safari/605.1.15' });
+      const hints = {};
+      Object.defineProperty(navigator, 'userAgentData', { value: hints });
+      Object.defineProperty(property === 'mobile' ? hints : navigator, property, {
+        get() { throw new Error('blocked optional property'); }
+      });
+    }, property);
+    await ready(page);
+    await expect(page.locator('.score-text')).toHaveText('浏览器得分');
+    await expect(page.locator('.detail-item')).toHaveCount(60);
+  });
+}
+
+test('score reaches its final value if animation frames silently stop mid-animation', async ({ page }) => {
+  await page.addInitScript(() => {
+    let frames = 0;
+    window.requestAnimationFrame = callback => {
+      if (++frames === 1) setTimeout(() => callback(performance.now()), 0);
+      return frames;
+    };
+  });
+  await ready(page);
+  const unsupported = await page.locator('.detail-status:not(.supported):not(.skipped)').count();
+  await expect(page.locator('.score')).toHaveText(String(Math.max(0, 100 - unsupported * 2)));
+});
+
+test('cleanup failures in image probes do not leave the page loading indefinitely', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.addInitScript(() => {
+    HTMLImageElement.prototype.removeAttribute = () => { throw new Error('blocked image cleanup'); };
+  });
+  await ready(page);
+  await expect(feature(page, '支持图像格式 WebP').locator('.detail-status')).toHaveText('支持');
+  await expect(feature(page, '支持图像格式 AVIF').locator('.detail-status')).toHaveText('支持');
+  expect(errors).toEqual([]);
+});
+
+test('upgrade transaction quota failure is skipped even when open reports AbortError', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, 'indexedDB', { value: {
+      open() {
+        const transaction = { error: new DOMException('full', 'QuotaExceededError') };
+        const request = {
+          transaction,
+          result: { createObjectStore: () => ({ put() {} }) }
+        };
+        setTimeout(() => {
+          request.onupgradeneeded({ oldVersion: 0 });
+          if (transaction.onabort) transaction.onabort();
+          request.error = new DOMException('aborted upgrade', 'AbortError');
+          request.onerror();
+        }, 0);
+        return request;
+      },
+      deleteDatabase() {}
+    } });
+  });
+  await ready(page);
+  await expect(feature(page, 'IndexedDB').locator('.detail-status')).toHaveText('已跳过');
+  await expect(page.locator('.score-text')).toHaveText('浏览器得分');
+});
+
+test('non-callable API placeholders are unsupported in real browser results', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'userAgent', { value: 'Mozilla/5.0 (Windows NT 10.0) Chrome/145.0.0.0' });
+    for (const name of ['share', 'getGamepads', 'requestMIDIAccess', 'clipboard']) {
+      Object.defineProperty(navigator, name, { value: null });
+    }
+    Object.defineProperty(window, 'showOpenFilePicker', { value: undefined });
+    Object.defineProperty(document, 'startViewTransition', { value: false });
+  });
+  await ready(page);
+  for (const name of ['Web Share API', 'Gamepad API', 'Web MIDI API', 'Clipboard API',
+    'File System Access API', 'View Transitions API']) {
+    await expect(feature(page, name).locator('.detail-status')).toHaveText('不支持');
+  }
+});
+
+test('user-agent markup is displayed as text, never interpreted as HTML', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'userAgent', {
+      value: 'Chrome/145.0.0.0 <img src=x onerror="window.uaInjected=true">'
+    });
+  });
+  await ready(page);
+  await expect(page.locator('.user-agent')).toContainText('<img src=x');
+  await expect(page.locator('.user-agent img')).toHaveCount(0);
+  expect(await page.evaluate(() => window.uaInjected)).toBeUndefined();
+});

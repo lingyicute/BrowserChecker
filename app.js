@@ -97,38 +97,60 @@ const app = createApp({
       }
       const duration = 1500;
       let startTime;
+      let frame;
+      let settled = false;
+      let timer;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        displayScore.value = targetScore;
+        clearTimeout(timer);
+        document.removeEventListener('visibilitychange', onVisibilityChange);
+        try {
+          if (typeof window.cancelAnimationFrame === 'function') window.cancelAnimationFrame(frame);
+        } catch (e) { /* 已排队的回调也会检查 settled，不再覆盖最终分数。 */ }
+      };
+      const onVisibilityChange = () => { if (document.hidden) finish(); };
       const updateScore = (timestamp) => {
+        if (settled) return;
         // 使用 rAF 的单调时间戳，避免系统时间回拨导致负分或动画迟迟不结束。
         if (startTime === undefined) startTime = timestamp;
         const progress = Math.max(0, Math.min(1, (timestamp - startTime) / duration));
         displayScore.value = Math.round((1 - Math.pow(1 - progress, 4)) * targetScore);
         if (progress < 1) scheduleFrame();
+        else finish();
       };
       const scheduleFrame = () => {
         try {
-          window.requestAnimationFrame(updateScore);
+          frame = window.requestAnimationFrame(updateScore);
         } catch (e) {
-          displayScore.value = targetScore;
+          finish();
         }
       };
-      // 后台页面的 rAF 可能一直不执行，先提供最终值，动画回调执行后再渐变。
+      // 第一帧和中途停帧都必须有兜底；进入后台时立即完成，避免停在部分分数。
       displayScore.value = targetScore;
+      timer = setTimeout(finish, duration + 100);
+      document.addEventListener('visibilitychange', onVisibilityChange);
       scheduleFrame();
+    };
+
+    // 隐私扩展可能只拦截某一个 getter；可选提示失败不能使整页检测失败。
+    const optionalValue = (object, property) => {
+      try { return object && object[property]; } catch (e) { return undefined; }
     };
 
     // 检测运行环境（设备类型 / 平台 / 安全上下文）
     const detectEnvironment = () => {
       const ua = navigator.userAgent;
-      let uaData;
-      try { uaData = navigator.userAgentData; } catch (e) { /* 可选 Client Hints 被策略限制。 */ }
+      const uaData = optionalValue(navigator, 'userAgentData');
 
       // iPadOS 13+ 的 Safari 默认伪装成 Macintosh，结合触控点数判断
-      const isIPadOSDesktopUA = /Macintosh/i.test(ua) && navigator.maxTouchPoints > 1;
+      const isIPadOSDesktopUA = /Macintosh/i.test(ua) && optionalValue(navigator, 'maxTouchPoints') > 1;
 
       isIOSDevice.value = /iPhone|iPad|iPod/i.test(ua) || isIPadOSDesktopUA;
 
       const uaSaysMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i.test(ua);
-      isMobileDevice.value = !!(uaData && uaData.mobile) || uaSaysMobile || isIOSDevice.value;
+      isMobileDevice.value = optionalValue(uaData, 'mobile') === true || uaSaysMobile || isIOSDevice.value;
 
       // 桌面 Linux（不含 Android / ChromeOS）
       isLinuxDesktop.value = !isMobileDevice.value && /Linux|X11/i.test(ua) && !/Android|CrOS/i.test(ua);
@@ -136,7 +158,7 @@ const app = createApp({
       isFileOrigin.value = location.protocol === 'file:';
       isSecureContext.value = window.isSecureContext === true;
       const standaloneDisplay = matchesMedia('(display-mode: standalone)');
-      isStandalonePWA.value = !!(standaloneDisplay || navigator.standalone === true);
+      isStandalonePWA.value = !!(standaloneDisplay || optionalValue(navigator, 'standalone') === true);
 
       console.log(`[浏览器检测] - 设备类型: ${isMobileDevice.value ? '移动设备' : '桌面设备'}`);
       console.log(`[浏览器检测] - iOS: ${isIOSDevice.value}, 桌面 Linux: ${isLinuxDesktop.value}, 安全上下文: ${isSecureContext.value}, file://: ${isFileOrigin.value}`);
@@ -194,8 +216,9 @@ const app = createApp({
         clearTimeout(timer);
         clearTimeout(errorTimer);
         img.onload = img.onerror = null;
-        document.removeEventListener('securitypolicyviolation', onPolicyViolation);
-        img.removeAttribute('src');
+        // 清理属于尽力而为；不能在 settled 后抛错，导致 Promise 永远无法完成。
+        try { document.removeEventListener('securitypolicyviolation', onPolicyViolation); } catch (e) {}
+        try { img.removeAttribute('src'); } catch (e) {}
         resolve(result);
       };
       const onPolicyViolation = (event) => {
@@ -207,11 +230,18 @@ const app = createApp({
       const timer = setTimeout(() => finish({
         skipped: true, reason: '图片解码超时，无法评估当前格式支持情况'
       }), 2000);
-      document.addEventListener('securitypolicyviolation', onPolicyViolation);
-      img.onload = () => finish(img.naturalWidth > 0 && img.naturalHeight > 0);
-      // 给异步 CSP 事件留出时间；普通解码失败仍然标记为不支持。
-      img.onerror = () => { errorTimer = setTimeout(() => finish(false), 100); };
-      img.src = dataUri;
+      try {
+        document.addEventListener('securitypolicyviolation', onPolicyViolation);
+        img.onload = () => finish(img.naturalWidth > 0 && img.naturalHeight > 0);
+        // 给异步 CSP 事件留出时间；普通解码失败仍然标记为不支持。
+        img.onerror = () => {
+          clearTimeout(errorTimer);
+          errorTimer = setTimeout(() => finish(false), 100);
+        };
+        img.src = dataUri;
+      } catch (e) {
+        finish({ skipped: true, reason: '图片解码样本无法加载，无法评估当前格式支持情况' });
+      }
     });
 
     // 仅检查属性存在会把被禁用的存储误报为可用；探测后只删除自己的临时键。
@@ -261,7 +291,11 @@ const app = createApp({
       const name = '__browserchecker_probe__' + Date.now() + '_' + Math.random().toString(36).slice(2);
       const restricted = { skipped: true, reason: 'IndexedDB 被存储策略限制或暂时不可用' };
       const cleanup = () => {
-        if (database) { database.close(); database = null; }
+        if (database) {
+          const connection = database;
+          database = null;
+          try { connection.close(); } catch (e) { /* 清理失败不能阻断结果或删除请求。 */ }
+        }
         if (created) {
           created = false;
           try { factory.deleteDatabase(name); } catch (e) { /* 存储策略可能已变化。 */ }
@@ -294,6 +328,10 @@ const app = createApp({
             return;
           }
           created = true;
+          // 升级写入可能异步触发 QuotaExceededError，open 请求随后只报告 AbortError。
+          // 保留原始事务错误，避免把存储限制误算为浏览器缺少 IndexedDB。
+          const upgrade = request.transaction;
+          upgrade.onabort = () => { if (!settled) fail(upgrade.error); };
           try {
             request.result.createObjectStore('probe').put('ok', 'probe');
           } catch (error) {
@@ -388,7 +426,7 @@ const app = createApp({
         }},
         { name: 'WebRTC', test: () => !!(window.RTCPeerConnection || window.webkitRTCPeerConnection) },
         { name: 'Web Speech API', test: () => 'SpeechRecognition' in window || 'webkitSpeechRecognition' in window },
-        { name: 'Web Share API', policy: 'web-share', secure: true, skipOnLinuxDesktop: true, test: () => 'share' in navigator },
+        { name: 'Web Share API', policy: 'web-share', secure: true, skipOnLinuxDesktop: true, test: () => typeof navigator.share === 'function' },
         { name: 'Payment Request API', policy: 'payment', secure: true, test: () => 'PaymentRequest' in window },
         { name: 'Pointer Events', test: () => 'PointerEvent' in window },
         { name: 'Web Audio API', test: () => 'AudioContext' in window || 'webkitAudioContext' in window },
@@ -407,7 +445,7 @@ const app = createApp({
           test: () => 'Notification' in window },
         { name: 'Screen Orientation API', test: () => !!(screen.orientation &&
           typeof screen.orientation.type === 'string' && typeof screen.orientation.angle === 'number') },
-        { name: 'Gamepad API', policy: 'gamepad', secure: true, test: () => 'getGamepads' in navigator },
+        { name: 'Gamepad API', policy: 'gamepad', secure: true, test: () => typeof navigator.getGamepads === 'function' },
         { name: 'Web Components', test: () => 'customElements' in window },
         { name: '支持视频格式 WebM', test: () => {
           const video = document.createElement('video');
@@ -425,7 +463,11 @@ const app = createApp({
         }},
         { name: 'requestAnimationFrame', test: () => typeof window.requestAnimationFrame === 'function' },
         { name: 'Storage API', test: testStorage },
-        { name: 'Clipboard API', secure: true, test: () => typeof navigator.clipboard !== 'undefined' },
+        { name: 'Clipboard API', secure: true, test: () => {
+          const clipboard = navigator.clipboard;
+          return !!clipboard && ['read', 'readText', 'write', 'writeText']
+            .some(method => typeof clipboard[method] === 'function');
+        } },
         { name: 'ResizeObserver', test: () => 'ResizeObserver' in window },
         { name: 'Performance API', test: () => 'performance' in window },
         // 图片格式：改为真实解码测试
@@ -437,7 +479,7 @@ const app = createApp({
         { name: 'Web Locks API', secure: true, test: () => 'locks' in navigator },
         // 新版 Chromium Android 已逐步提供文件选择器；这里使用能力检测，
         // 不再把整个 File System Access API 一刀切为桌面专属。
-        { name: 'File System Access API', secure: true, test: () => 'showOpenFilePicker' in window },
+        { name: 'File System Access API', secure: true, test: () => typeof window.showOpenFilePicker === 'function' },
         { name: 'CSS :has() 选择器', test: () => !!(window.CSS && CSS.supports('selector(:has(*))')) },
         { name: 'CSS 容器查询', test: () => !!(window.CSS && CSS.supports('container-type: inline-size')) },
         { name: 'CSS 嵌套规则', test: () => !!(window.CSS && CSS.supports('selector(&)')) },
@@ -448,7 +490,7 @@ const app = createApp({
         { name: 'Compression Streams API', test: () => 'CompressionStream' in window },
         { name: 'Cookie Store API', secure: true, test: () => 'cookieStore' in window },
         { name: 'Idle Detection API', policy: 'idle-detection', secure: true, skipOnIOS: true, test: () => 'IdleDetector' in window },
-        { name: 'Web MIDI API', policy: 'midi', secure: true, skipOnIOS: true, test: () => 'requestMIDIAccess' in navigator },
+        { name: 'Web MIDI API', policy: 'midi', secure: true, skipOnIOS: true, test: () => typeof navigator.requestMIDIAccess === 'function' },
         { name: 'Reporting API', test: () => 'ReportingObserver' in window },
         { name: 'Screen Wake Lock API', policy: 'screen-wake-lock', secure: true, test: () => 'wakeLock' in navigator },
         { name: 'EyeDropper API', secure: true, desktopOnly: true, test: () => 'EyeDropper' in window },
@@ -457,7 +499,7 @@ const app = createApp({
         { name: 'Credential Management API', secure: true, test: () => 'credentials' in navigator },
         // --- 针对 Chromium 120-150 新增的新特性检测 ---
         { name: 'Popover API', test: () => 'popover' in HTMLElement.prototype },
-        { name: 'View Transitions API', test: () => 'startViewTransition' in document },
+        { name: 'View Transitions API', test: () => typeof document.startViewTransition === 'function' },
         { name: 'CSS light-dark()', test: () => !!(window.CSS && CSS.supports('color: light-dark(white, black)')) },
         { name: 'Speculation Rules API', skipOnIOS: true, test: () => !!(HTMLScriptElement.supports && HTMLScriptElement.supports('speculationrules')) }
       ];
