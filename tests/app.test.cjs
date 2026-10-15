@@ -59,7 +59,7 @@ function harness() {
   // 仅在测试 VM 中暴露闭包，不增加生产脚本的公共 API。
   const instrumented = source.replace('    return {\n      userAgent,', `
     globalThis.internals = { detectEnvironment, getSkipReason, checkModernFeatures,
-      detectBrowserInfo, generateRecommendation, testImageDecode, testStorage,
+      detectBrowserInfo, generateRecommendation, testImageDecode, testStorage, testIndexedDB,
       releaseWebGLContext, animateScore };
     return {\n      userAgent,`);
   vm.runInNewContext(instrumented, context);
@@ -320,7 +320,7 @@ test('reduced motion bypasses JavaScript score animation', () => {
 
 test('initialization failure always exits loading and does not invent a 50-point score', async () => {
   const h = harness();
-  h.context.window.matchMedia = () => { throw new Error('environment failure'); };
+  Object.defineProperty(h.context.navigator, 'userAgent', { get() { throw new Error('environment failure'); } });
   await h.mounted();
   h.runTimers(800);
   assert.equal(h.state.isLoading.value, false);
@@ -328,4 +328,208 @@ test('initialization failure always exits loading and does not invent a 50-point
   assert.equal(h.state.totalScore.value, null);
   assert.equal(h.state.displayScore.value, null);
   assert.equal(h.state.detectionResults.value.length, 0);
+});
+
+
+test('blocked optional environment APIs do not abort detection', async () => {
+  const h = harness();
+  h.context.window.matchMedia = () => { throw new Error('blocked'); };
+  Object.defineProperty(h.context.navigator, 'userAgentData', { get() { throw new Error('blocked'); } });
+  const pending = h.mounted();
+  completeImages(h);
+  await pending;
+  h.runTimers(800);
+  assert.equal(h.state.detectionError.value, false);
+  assert.equal(h.state.isLoading.value, false);
+  assert.equal(h.state.detectionResults.value.length, 60);
+});
+
+test('animation exceptions cannot invalidate a completed score', () => {
+  const h = harness();
+  h.context.window.requestAnimationFrame = () => { throw new Error('blocked'); };
+  h.state.totalScore.value = 84;
+  h.api.animateScore();
+  assert.equal(h.state.displayScore.value, 84);
+});
+
+test('animation uses frame timestamps, stays bounded and ends at the exact score', () => {
+  const h = harness();
+  let next;
+  h.context.window.requestAnimationFrame = callback => { next = callback; };
+  h.state.totalScore.value = 84;
+  h.api.animateScore();
+  assert.equal(h.state.displayScore.value, 84); // Even if the first frame never runs.
+  next(10000);
+  assert.equal(h.state.displayScore.value, 0);
+  next(10750);
+  assert.equal(h.state.displayScore.value, 79);
+  next(11500);
+  assert.equal(h.state.displayScore.value, 84);
+});
+
+test('hidden pages immediately get the final score without scheduling animation', () => {
+  const h = harness();
+  h.context.document.hidden = true;
+  let calls = 0;
+  h.context.window.requestAnimationFrame = () => { calls++; };
+  h.state.totalScore.value = 82;
+  h.api.animateScore();
+  assert.equal(h.state.displayScore.value, 82);
+  assert.equal(calls, 0);
+});
+
+test('explicit Permissions Policy denial skips features without deducting points', async () => {
+  const h = harness();
+  const names = ['geolocation', 'gamepad', 'usb', 'bluetooth', 'payment', 'web-share',
+    'idle-detection', 'midi', 'screen-wake-lock'];
+  h.context.document.featurePolicy = { features: () => names, allowsFeature: () => false };
+  const find = await detect(h);
+  for (const name of ['Geolocation API', 'Gamepad API', 'WebUSB', 'Web Bluetooth',
+    'Payment Request API', 'Web Share API', 'Idle Detection API', 'Web MIDI API', 'Screen Wake Lock API']) {
+    assert.equal(find(name).skipped, true, name);
+    assert.match(find(name).reason, /Permissions Policy/);
+  }
+  assert.equal(h.state.totalScore.value, 100 - h.state.getUnsupportedFeaturesCount() * 2);
+});
+
+test('unknown, allowed, missing or broken policy introspection does not bypass detection', () => {
+  const h = harness();
+  const feature = { policy: 'usb' };
+  for (const policy of [undefined, {},
+    { features: () => [], allowsFeature: () => false },
+    { features: () => ['usb'], allowsFeature: () => true },
+    { features: () => { throw new Error('blocked'); } }]) {
+    h.context.document.permissionsPolicy = policy;
+    assert.equal(h.api.getSkipReason(feature), null);
+  }
+});
+
+function indexedDBMock(h) {
+  const request = {};
+  const read = { result: 'ok' };
+  const transaction = { objectStore: () => ({ get: () => read }) };
+  const calls = { deleted: [], closed: 0, writes: 0, aborted: 0 };
+  const database = {
+    createObjectStore: () => ({ put() { calls.writes++; } }),
+    transaction: () => transaction,
+    close() { calls.closed++; }
+  };
+  request.result = database;
+  request.transaction = { abort() { calls.aborted++; } };
+  h.context.window.indexedDB = {
+    open(name) { calls.name = name; return request; },
+    deleteDatabase(name) { calls.deleted.push(name); }
+  };
+  return { request, read, transaction, calls };
+}
+
+test('IndexedDB requires a completed read/write transaction and deletes only its probe', async () => {
+  const h = harness();
+  const m = indexedDBMock(h);
+  const pending = h.api.testIndexedDB();
+  m.request.onupgradeneeded({ oldVersion: 0 });
+  m.request.onsuccess();
+  m.transaction.oncomplete();
+  assert.equal(await pending, true);
+  assert.equal(m.calls.writes, 1);
+  assert.equal(m.calls.closed, 1);
+  assert.deepEqual(m.calls.deleted, [m.calls.name]);
+  assert.equal(h.timers.size, 0);
+});
+
+test('IndexedDB absence and silent readback failure are unsupported', async () => {
+  const h = harness();
+  assert.equal(await h.api.testIndexedDB(), false);
+  const m = indexedDBMock(h);
+  const pending = h.api.testIndexedDB();
+  m.request.onupgradeneeded({ oldVersion: 0 });
+  m.request.onsuccess();
+  m.read.result = undefined;
+  m.transaction.oncomplete();
+  assert.equal(await pending, false);
+  assert.equal(m.calls.closed, 1);
+});
+
+for (const name of ['SecurityError', 'NotAllowedError', 'QuotaExceededError', 'InvalidStateError', 'UnknownError']) {
+  test(`IndexedDB ${name}: synchronous access and asynchronous open errors are skipped`, async () => {
+    const h = harness();
+    Object.defineProperty(h.context.window, 'indexedDB', { configurable: true, get() { throw { name }; } });
+    assert.equal((await h.api.testIndexedDB()).skipped, true);
+    delete h.context.window.indexedDB;
+    const m = indexedDBMock(h);
+    const pending = h.api.testIndexedDB();
+    m.request.error = { name };
+    m.request.onerror();
+    assert.equal((await pending).skipped, true);
+    assert.equal(h.timers.size, 0);
+  });
+}
+
+for (const mode of ['blocked', 'timeout', 'collision']) {
+  test(`IndexedDB ${mode}: no existing database is modified or deleted`, async () => {
+    const h = harness();
+    const m = indexedDBMock(h);
+    const pending = h.api.testIndexedDB();
+    if (mode === 'blocked') m.request.onblocked();
+    if (mode === 'timeout') h.runTimers(2000);
+    if (mode === 'collision') m.request.onsuccess();
+    assert.equal((await pending).skipped, true);
+    if (mode !== 'collision') {
+      m.request.onupgradeneeded({ oldVersion: 0 });
+      assert.equal(m.calls.aborted, 1);
+      m.request.onsuccess();
+    }
+    assert.equal(m.calls.writes, 0);
+    assert.equal(m.calls.closed, 1);
+    assert.deepEqual(m.calls.deleted, []);
+    assert.equal(h.timers.size, 0);
+  });
+}
+
+test('IndexedDB timeout after upgrade cleans up the eventual successful connection', async () => {
+  const h = harness();
+  const m = indexedDBMock(h);
+  const pending = h.api.testIndexedDB();
+  m.request.onupgradeneeded({ oldVersion: 0 });
+  h.runTimers(2000);
+  assert.equal((await pending).skipped, true);
+  m.request.onsuccess();
+  assert.equal(m.calls.closed, 1);
+  assert.deepEqual(m.calls.deleted, [m.calls.name]);
+});
+
+test('IndexedDB aborted transaction reports policy restrictions and cleans up', async () => {
+  const h = harness();
+  const m = indexedDBMock(h);
+  const pending = h.api.testIndexedDB();
+  m.request.onupgradeneeded({ oldVersion: 0 });
+  m.request.onsuccess();
+  m.transaction.error = { name: 'QuotaExceededError' };
+  m.transaction.onabort();
+  assert.equal((await pending).skipped, true);
+  assert.equal(m.calls.closed, 1);
+  assert.deepEqual(m.calls.deleted, [m.calls.name]);
+});
+
+
+test('storage collisions or broken getItem shims cannot cause an infinite synchronous loop', () => {
+  const h = harness();
+  let reads = 0;
+  h.context.window.localStorage.getItem = () => { reads++; return 'occupied'; };
+  h.context.window.localStorage.setItem = () => { throw new Error('must not overwrite'); };
+  assert.equal(h.api.testStorage().skipped, true);
+  assert.equal(reads, 8);
+});
+
+test('storage collision retry preserves the colliding value and removes only its own key', () => {
+  const h = harness();
+  const s = h.context.window.localStorage;
+  const get = s.getItem;
+  let collision;
+  s.getItem = key => {
+    if (!collision) { collision = key; s.setItem(key, 'keep'); }
+    return get(key);
+  };
+  assert.equal(h.api.testStorage(), true);
+  assert.deepEqual([...s.values], [[collision, 'keep']]);
 });

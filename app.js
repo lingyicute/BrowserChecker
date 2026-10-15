@@ -78,47 +78,49 @@ const app = createApp({
       return item.supported ? '支持' : '不支持';
     };
 
-    // 数字滚动动画
-    const prefersReducedMotion = () => {
+    // 动画/显示模式只是增强，相关 API 被扩展禁用时不应使整个检测失败。
+    const matchesMedia = (query) => {
       try {
-        return typeof window.matchMedia === 'function' &&
-          window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        return typeof window.matchMedia === 'function' && window.matchMedia(query).matches;
       } catch (e) {
         return false;
       }
     };
+    const prefersReducedMotion = () => matchesMedia('(prefers-reduced-motion: reduce)');
 
     const animateScore = () => {
-      // 动画是展示增强；缺少正在检测的 API 不能反过来破坏检测结果。
-      if (typeof window.requestAnimationFrame !== 'function' || prefersReducedMotion()) {
-        displayScore.value = totalScore.value;
+      const targetScore = totalScore.value;
+      if (typeof window.requestAnimationFrame !== 'function' || prefersReducedMotion() ||
+          document.hidden) {
+        displayScore.value = targetScore;
         return;
       }
-      const duration = 1500; // 动画持续时间(毫秒)
-      const startTime = Date.now();
-      const targetScore = totalScore.value;
-
-      const updateScore = () => {
-        const currentTime = Date.now();
-        const elapsed = currentTime - startTime;
-
-        if (elapsed < duration) {
-          // 使用 easeOutQuart 缓动函数使动画更加自然
-          const progress = 1 - Math.pow(1 - (elapsed / duration), 4);
-          displayScore.value = Math.round(progress * targetScore);
-          requestAnimationFrame(updateScore);
-        } else {
+      const duration = 1500;
+      let startTime;
+      const updateScore = (timestamp) => {
+        // 使用 rAF 的单调时间戳，避免系统时间回拨导致负分或动画迟迟不结束。
+        if (startTime === undefined) startTime = timestamp;
+        const progress = Math.max(0, Math.min(1, (timestamp - startTime) / duration));
+        displayScore.value = Math.round((1 - Math.pow(1 - progress, 4)) * targetScore);
+        if (progress < 1) scheduleFrame();
+      };
+      const scheduleFrame = () => {
+        try {
+          window.requestAnimationFrame(updateScore);
+        } catch (e) {
           displayScore.value = targetScore;
         }
       };
-
-      updateScore();
+      // 后台页面的 rAF 可能一直不执行，先提供最终值，动画回调执行后再渐变。
+      displayScore.value = targetScore;
+      scheduleFrame();
     };
 
     // 检测运行环境（设备类型 / 平台 / 安全上下文）
     const detectEnvironment = () => {
       const ua = navigator.userAgent;
-      const uaData = navigator.userAgentData;
+      let uaData;
+      try { uaData = navigator.userAgentData; } catch (e) { /* 可选 Client Hints 被策略限制。 */ }
 
       // iPadOS 13+ 的 Safari 默认伪装成 Macintosh，结合触控点数判断
       const isIPadOSDesktopUA = /Macintosh/i.test(ua) && navigator.maxTouchPoints > 1;
@@ -133,8 +135,7 @@ const app = createApp({
 
       isFileOrigin.value = location.protocol === 'file:';
       isSecureContext.value = window.isSecureContext === true;
-      const standaloneDisplay = typeof window.matchMedia === 'function' &&
-        window.matchMedia('(display-mode: standalone)').matches;
+      const standaloneDisplay = matchesMedia('(display-mode: standalone)');
       isStandalonePWA.value = !!(standaloneDisplay || navigator.standalone === true);
 
       console.log(`[浏览器检测] - 设备类型: ${isMobileDevice.value ? '移动设备' : '桌面设备'}`);
@@ -158,6 +159,18 @@ const app = createApp({
       }
       if (feature.skipOnLinuxDesktop && isLinuxDesktop.value) {
         return '桌面 Linux 平台默认不提供此 API';
+      }
+      // 只信任浏览器明确认识且明确禁止的策略名称，未知策略不能当作“不支持”。
+      // 不查询/申请用户权限，也不改变 API 正常可检测时的评分。
+      if (feature.policy) {
+        try {
+          const policy = document.permissionsPolicy || document.featurePolicy;
+          if (policy && typeof policy.features === 'function' &&
+              typeof policy.allowsFeature === 'function' &&
+              policy.features().includes(feature.policy) && !policy.allowsFeature(feature.policy)) {
+            return '被页面权限策略（Permissions Policy）禁用';
+          }
+        } catch (e) { /* 不支持策略 introspection 的浏览器仍执行原能力检测。 */ }
       }
       if (typeof feature.skipIf === 'function') {
         try {
@@ -210,8 +223,14 @@ const app = createApp({
         try {
           storage = window[name];
           if (!storage || typeof storage.setItem !== 'function') return false;
-          key = '__browserchecker_probe__';
-          while (storage.getItem(key) !== null) key += '_';
+          // 不同标签页使用不同的键，避免相互读取/删除探测值；碰撞重试必须有界。
+          const prefix = '__browserchecker_probe__' + Date.now() + '_' + Math.random().toString(36).slice(2);
+          for (let attempt = 0; attempt < 8; attempt++) {
+            key = prefix + '_' + attempt;
+            if (storage.getItem(key) === null) break;
+            key = null;
+          }
+          if (key === null) return { skipped: true, reason: '无法分配独立的网站存储检测键' };
           storage.setItem(key, key);
           written = true;
           if (storage.getItem(key) !== key) return false;
@@ -230,6 +249,73 @@ const app = createApp({
       return true;
     };
 
+    // IndexedDB 属性存在不代表可读写（隐私模式、沙箱或网站存储策略可能阻止打开）。
+    // 仅操作本次创建的随机临时数据库；超时后到达的请求也必须关闭连接。
+    const testIndexedDB = () => new Promise((resolve) => {
+      let factory;
+      let request;
+      let database;
+      let created = false;
+      let settled = false;
+      let timer;
+      const name = '__browserchecker_probe__' + Date.now() + '_' + Math.random().toString(36).slice(2);
+      const restricted = { skipped: true, reason: 'IndexedDB 被存储策略限制或暂时不可用' };
+      const cleanup = () => {
+        if (database) { database.close(); database = null; }
+        if (created) {
+          created = false;
+          try { factory.deleteDatabase(name); } catch (e) { /* 存储策略可能已变化。 */ }
+        }
+      };
+      const finish = (result) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        cleanup();
+        resolve(result);
+      };
+      const fail = (error) => {
+        const limited = error && ['SecurityError', 'NotAllowedError', 'QuotaExceededError',
+          'InvalidStateError', 'UnknownError'].includes(error.name);
+        finish(limited ? restricted : false);
+      };
+      try {
+        factory = window.indexedDB;
+        if (!factory || typeof factory.open !== 'function') { finish(false); return; }
+        timer = setTimeout(() => finish({ skipped: true, reason: 'IndexedDB 检测超时，无法评估' }), 2000);
+        request = factory.open(name);
+        request.onblocked = () => finish(restricted);
+        request.onerror = () => { if (!settled) fail(request.error); };
+        request.onupgradeneeded = (event) => {
+          // 万一名称碰撞，不读写、更不删除已有数据库；超时后的升级直接回滚。
+          if (settled || event.oldVersion !== 0) {
+            request.transaction.abort();
+            if (!settled) finish(restricted);
+            return;
+          }
+          created = true;
+          try {
+            request.result.createObjectStore('probe').put('ok', 'probe');
+          } catch (error) {
+            request.transaction.abort();
+            fail(error);
+          }
+        };
+        request.onsuccess = () => {
+          database = request.result;
+          if (settled) { cleanup(); return; }
+          if (!created) { finish(restricted); return; }
+          try {
+            const transaction = database.transaction('probe', 'readonly');
+            const read = transaction.objectStore('probe').get('probe');
+            transaction.oncomplete = () => finish(read.result === 'ok');
+            transaction.onabort = () => fail(transaction.error);
+            database.onversionchange = () => finish(restricted);
+          } catch (error) { fail(error); }
+        };
+      } catch (error) { fail(error); }
+    });
+
     const releaseWebGLContext = (context) => {
       if (!context) return;
       try {
@@ -243,6 +329,7 @@ const app = createApp({
 
     // 检测现代Web功能
     // 每个检测项可选字段：
+    //   policy            - 对应 Permissions Policy；页面明确禁用时跳过
     //   secure            - 需要安全上下文（HTTPS），非 HTTPS 下跳过
     //   desktopOnly       - 当前确实仅桌面端提供，移动端跳过
     //   skipOnIOS         - 常见 iOS WebKit 环境不提供，跳过
@@ -301,16 +388,16 @@ const app = createApp({
         }},
         { name: 'WebRTC', test: () => !!(window.RTCPeerConnection || window.webkitRTCPeerConnection) },
         { name: 'Web Speech API', test: () => 'SpeechRecognition' in window || 'webkitSpeechRecognition' in window },
-        { name: 'Web Share API', secure: true, skipOnLinuxDesktop: true, test: () => 'share' in navigator },
-        { name: 'Payment Request API', secure: true, test: () => 'PaymentRequest' in window },
+        { name: 'Web Share API', policy: 'web-share', secure: true, skipOnLinuxDesktop: true, test: () => 'share' in navigator },
+        { name: 'Payment Request API', policy: 'payment', secure: true, test: () => 'PaymentRequest' in window },
         { name: 'Pointer Events', test: () => 'PointerEvent' in window },
         { name: 'Web Audio API', test: () => 'AudioContext' in window || 'webkitAudioContext' in window },
         { name: 'WebXR Device API', secure: true, skipOnIOS: true, test: () => 'xr' in navigator },
-        { name: 'WebUSB', secure: true, skipOnIOS: true, test: () => 'usb' in navigator },
-        { name: 'Web Bluetooth', secure: true, skipOnIOS: true, test: () => 'bluetooth' in navigator },
+        { name: 'WebUSB', policy: 'usb', secure: true, skipOnIOS: true, test: () => 'usb' in navigator },
+        { name: 'Web Bluetooth', policy: 'bluetooth', secure: true, skipOnIOS: true, test: () => 'bluetooth' in navigator },
         { name: 'WebAuthn', secure: true, test: () => 'credentials' in navigator && 'PublicKeyCredential' in window },
-        { name: 'Geolocation API', secure: true, test: () => 'geolocation' in navigator },
-        { name: 'IndexedDB', test: () => 'indexedDB' in window },
+        { name: 'Geolocation API', policy: 'geolocation', secure: true, test: () => 'geolocation' in navigator },
+        { name: 'IndexedDB', test: testIndexedDB },
         { name: 'Web Notifications', secure: true,
           // iOS 的 Notifications API 主要面向已添加到主屏幕的 Web App。
           // 普通标签页跳过，主屏幕 Web App 则进行实际检测。
@@ -320,7 +407,7 @@ const app = createApp({
           test: () => 'Notification' in window },
         { name: 'Screen Orientation API', test: () => !!(screen.orientation &&
           typeof screen.orientation.type === 'string' && typeof screen.orientation.angle === 'number') },
-        { name: 'Gamepad API', secure: true, test: () => 'getGamepads' in navigator },
+        { name: 'Gamepad API', policy: 'gamepad', secure: true, test: () => 'getGamepads' in navigator },
         { name: 'Web Components', test: () => 'customElements' in window },
         { name: '支持视频格式 WebM', test: () => {
           const video = document.createElement('video');
@@ -360,10 +447,10 @@ const app = createApp({
         { name: 'WebTransport API', secure: true, test: () => 'WebTransport' in window },
         { name: 'Compression Streams API', test: () => 'CompressionStream' in window },
         { name: 'Cookie Store API', secure: true, test: () => 'cookieStore' in window },
-        { name: 'Idle Detection API', secure: true, skipOnIOS: true, test: () => 'IdleDetector' in window },
-        { name: 'Web MIDI API', secure: true, skipOnIOS: true, test: () => 'requestMIDIAccess' in navigator },
+        { name: 'Idle Detection API', policy: 'idle-detection', secure: true, skipOnIOS: true, test: () => 'IdleDetector' in window },
+        { name: 'Web MIDI API', policy: 'midi', secure: true, skipOnIOS: true, test: () => 'requestMIDIAccess' in navigator },
         { name: 'Reporting API', test: () => 'ReportingObserver' in window },
-        { name: 'Screen Wake Lock API', secure: true, test: () => 'wakeLock' in navigator },
+        { name: 'Screen Wake Lock API', policy: 'screen-wake-lock', secure: true, test: () => 'wakeLock' in navigator },
         { name: 'EyeDropper API', secure: true, desktopOnly: true, test: () => 'EyeDropper' in window },
         { name: 'ScrollTimeline / ViewTimeline', test: () => 'ScrollTimeline' in window || 'ViewTimeline' in window },
         { name: 'MediaSession API', test: () => 'mediaSession' in navigator },
