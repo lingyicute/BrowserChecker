@@ -47,7 +47,9 @@ test('missing animation API preserves detection and applies only the feature ded
 });
 
 test('initialization exceptions end loading without fabricated scores', async ({ page }) => {
-  await page.addInitScript(() => { window.matchMedia = () => { throw new Error('test initialization error'); }; });
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'userAgent', { get() { throw new Error('test initialization error'); } });
+  });
   await ready(page);
   await expect(page.locator('.score')).toHaveText('—');
   await expect(page.locator('.score-text')).toHaveText('检测失败');
@@ -187,4 +189,116 @@ test('iOS Firefox UA renders Firefox without claiming a Chromium engine', async 
   await expect(page.locator('.browser-info')).toContainText('浏览器类型：Firefox');
   await expect(page.locator('.browser-info')).not.toContainText('Chromium 内核版本：');
   await expect(page.locator('.mobile-notice').first()).toContainText('iOS');
+});
+
+
+test('optional environment and animation failures preserve the completed result', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.matchMedia = () => { throw new Error('blocked display mode query'); };
+    window.requestAnimationFrame = () => { throw new Error('blocked animation'); };
+    Object.defineProperty(navigator, 'userAgentData', { get() { throw new Error('blocked client hints'); } });
+  });
+  await ready(page);
+  await expect(page.locator('.score-text')).toHaveText('浏览器得分');
+  await expect(page.locator('.detail-item')).toHaveCount(60);
+  await expect(page.locator('.score')).toHaveText(/^\d+$/);
+});
+
+test('explicitly disabled permissions are skipped on browsers exposing policy introspection', async ({ page }) => {
+  await ready(page, '/?permissions=deny');
+  const introspection = await page.evaluate(() => {
+    const policy = document.permissionsPolicy || document.featurePolicy;
+    return !!(policy && policy.features && policy.features().includes('geolocation'));
+  });
+  const status = feature(page, 'Geolocation API').locator('.detail-status');
+  if (introspection) {
+    await expect(status).toHaveText('已跳过');
+    await expect(feature(page, 'Geolocation API').locator('.detail-reason')).toContainText('Permissions Policy');
+  } else {
+    // 无反射 API 的引擎继续检查 API 是否暴露，不能虚构策略状态。
+    await expect(status).not.toHaveText('已跳过');
+  }
+});
+
+test('real IndexedDB probe succeeds, removes its database and preserves existing data', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('.container')).toHaveClass(/content-loaded/);
+  await page.evaluate(() => new Promise((resolve, reject) => {
+    const request = indexedDB.open('browserchecker-user-data');
+    request.onupgradeneeded = () => request.result.createObjectStore('saved').put('keep', 'key');
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => { request.result.close(); resolve(); };
+  }));
+  await ready(page);
+  await expect(feature(page, 'IndexedDB').locator('.detail-status')).toHaveText('支持');
+  const saved = await page.evaluate(() => new Promise((resolve, reject) => {
+    const request = indexedDB.open('browserchecker-user-data');
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const database = request.result;
+      const transaction = database.transaction('saved');
+      const read = transaction.objectStore('saved').get('key');
+      transaction.oncomplete = () => { database.close(); resolve(read.result); };
+      transaction.onabort = () => { database.close(); reject(transaction.error); };
+    };
+  }));
+  expect(saved).toBe('keep');
+  // databases() 是辅助验证，不是生产检测的依赖。
+  if (await page.evaluate(() => typeof indexedDB.databases === 'function')) {
+    await expect.poll(() => page.evaluate(async () =>
+      (await indexedDB.databases()).filter(db => db.name.startsWith('__browserchecker_probe__')).length
+    )).toBe(0);
+  }
+});
+
+for (const mode of ['getter', 'open', 'timeout']) {
+  test(`IndexedDB ${mode} restrictions do not produce a false supported result`, async ({ page }) => {
+    await page.addInitScript(mode => {
+      Object.defineProperty(window, 'indexedDB', {
+        get() {
+          if (mode === 'getter') throw new DOMException('blocked', 'SecurityError');
+          return { open() {
+            if (mode === 'open') throw new DOMException('blocked', 'SecurityError');
+            return {};
+          } };
+        }
+      });
+    }, mode);
+    await ready(page);
+    await expect(feature(page, 'IndexedDB').locator('.detail-status')).toHaveText('已跳过');
+    await expect(page.locator('.score-text')).toHaveText('浏览器得分');
+  });
+}
+
+
+test('details remain inside their panel on narrow screens and can be scrolled by keyboard', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.setViewportSize({ width: 320, height: 720 });
+  await ready(page);
+  const region = page.getByRole('region', { name: '详细检测结果' });
+  await page.keyboard.press('Tab');
+  await expect(region).toBeFocused();
+  expect(await region.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+  expect(await page.locator('.detail-name').evaluateAll(elements => elements.every(el =>
+    el.scrollWidth <= el.clientWidth
+  ))).toBe(true);
+  await page.keyboard.press('End');
+  await expect.poll(() => region.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
+});
+
+test('temporary local storage keys are collision-safe and cleaned after a real browser probe', async ({ page }) => {
+  await ready(page);
+  await page.evaluate(() => {
+    localStorage.setItem('__browserchecker_probe__', 'keep');
+    sessionStorage.setItem('__browserchecker_probe__', 'keep');
+  });
+  await ready(page);
+  await expect(feature(page, 'Storage API').locator('.detail-status')).toHaveText('支持');
+  expect(await page.evaluate(() => [localStorage, sessionStorage].map(storage => ({
+    saved: storage.getItem('__browserchecker_probe__'),
+    probes: Object.keys(storage).filter(key => key.startsWith('__browserchecker_probe__'))
+  })))).toEqual([
+    { saved: 'keep', probes: ['__browserchecker_probe__'] },
+    { saved: 'keep', probes: ['__browserchecker_probe__'] }
+  ]);
 });

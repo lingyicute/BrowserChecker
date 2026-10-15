@@ -98,8 +98,8 @@
 
       <!-- 详细检测结果块 -->
       <div v-if="!detectionError" class="block-item block-details">
-        <h3>详细检测结果</h3>
-        <div class="detail-items-container">
+        <h3 id="details-heading">详细检测结果</h3>
+        <div class="detail-items-container" tabindex="0" role="region" aria-labelledby="details-heading">
           <div class="detail-item" :class="{ 'detail-item-skipped': item.skipped }" v-for="(item, index) in detectionResults" :key="item.name" :style="{ animationDelay: `${index * 0.03}s` }">
             <div class="detail-name">
               {{ item.name }}

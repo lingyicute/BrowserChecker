@@ -14,6 +14,7 @@ http.createServer((req, res) => {
   const file = files[url.pathname];
   if (!file) { res.writeHead(404); res.end(); return; }
   res.setHeader('Content-Type', file[1]);
+  if (url.searchParams.get('permissions') === 'deny') res.setHeader('Permissions-Policy', 'geolocation=(), usb=(), payment=(), gamepad=()');
   if (url.searchParams.get('csp') === 'images') res.setHeader('Content-Security-Policy', "img-src 'none'");
   if (url.searchParams.get('csp') === 'strict') res.setHeader('Content-Security-Policy', "script-src 'self' https://cdn.jsdelivr.net");
   res.end(fs.readFileSync(path.join(__dirname, '..', file[0])));

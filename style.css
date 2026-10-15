@@ -198,19 +198,19 @@ body {
 }
 
 .score-green {
-  color: #22c55e;
+  color: #15803d;
 }
 
 .score-yellow {
-  color: #eab308;
+  color: #a16207;
 }
 
 .score-orange {
-  color: #f97316;
+  color: #c2410c;
 }
 
 .score-red {
-  color: #ef4444;
+  color: #dc2626;
 }
 
 .score-text {
@@ -395,6 +395,11 @@ body {
   scrollbar-color: #e2e8f0 transparent;
 }
 
+.detail-items-container:focus {
+  outline: 2px solid #2563eb;
+  outline-offset: 3px;
+}
+
 .detail-items-container::-webkit-scrollbar {
   width: 6px;
 }
@@ -434,6 +439,8 @@ body {
 }
 
 .detail-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
   color: #475569;
   flex: 1;
   padding-right: 10px;
@@ -444,29 +451,30 @@ body {
   border-radius: 4px;
   padding: 4px 10px;
   background-color: #fee2e2;
-  color: #ef4444;
+  color: #b91c1c;
+  flex-shrink: 0;
   white-space: nowrap;
   font-size: 13px;
 }
 
 .detail-status.supported {
   background-color: #dcfce7;
-  color: #22c55e;
+  color: #166534;
 }
 
 .detail-status.skipped {
   background-color: #f1f5f9;
-  color: #64748b;
+  color: #475569;
 }
 
 .detail-item-skipped .detail-name {
-  color: #94a3b8;
+  color: #64748b;
 }
 
 .detail-reason {
   display: block;
   font-size: 12px;
-  color: #94a3b8;
+  color: #64748b;
   margin-top: 2px;
 }
 
@@ -523,6 +531,7 @@ body {
   }
 
   .detail-name {
+    flex-basis: 100%;
     width: 100%;
     margin-bottom: 5px;
     padding-right: 0;
