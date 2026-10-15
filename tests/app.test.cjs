@@ -533,3 +533,130 @@ test('storage collision retry preserves the colliding value and removes only its
   assert.equal(h.api.testStorage(), true);
   assert.deepEqual([...s.values], [[collision, 'keep']]);
 });
+
+for (const property of ['mobile', 'maxTouchPoints', 'standalone']) {
+  test(`blocked optional ${property} getter does not invalidate all feature results`, async () => {
+    const h = harness();
+    h.context.navigator.userAgent = 'Macintosh';
+    h.context.navigator.userAgentData = {};
+    const object = property === 'mobile' ? h.context.navigator.userAgentData : h.context.navigator;
+    Object.defineProperty(object, property, { get() { throw new Error('blocked optional hint'); } });
+    const pending = h.mounted();
+    completeImages(h);
+    await pending;
+    h.runTimers(800);
+    assert.equal(h.state.detectionError.value, false);
+    assert.equal(h.state.detectionResults.value.length, 60);
+  });
+}
+
+test('score animation finishes even if frames stop after the first callback', () => {
+  const h = harness();
+  let next;
+  h.context.window.requestAnimationFrame = callback => { next = callback; return 42; };
+  h.state.totalScore.value = 84;
+  h.api.animateScore();
+  next(0);
+  assert.equal(h.state.displayScore.value, 0);
+  h.runTimers(1600);
+  assert.equal(h.state.displayScore.value, 84);
+  next(500); // A late queued frame must not overwrite the final score.
+  assert.equal(h.state.displayScore.value, 84);
+  assert.equal(h.timers.size, 0);
+});
+
+test('hiding a page mid-animation finalizes its score and removes listeners', () => {
+  const h = harness();
+  let next;
+  h.context.window.requestAnimationFrame = callback => { next = callback; };
+  h.state.totalScore.value = 84;
+  h.api.animateScore();
+  next(0);
+  h.context.document.hidden = true;
+  for (const fn of h.listeners.get('visibilitychange') || []) fn();
+  assert.equal(h.state.displayScore.value, 84);
+  assert.equal(h.listeners.get('visibilitychange')?.size, 0);
+  assert.equal(h.timers.size, 0);
+});
+
+test('normal animation completion clears its fallback timer and visibility listener', () => {
+  const h = harness();
+  let next;
+  h.context.window.requestAnimationFrame = callback => { next = callback; };
+  h.api.animateScore();
+  next(0);
+  next(1500);
+  assert.equal(h.timers.size, 0);
+  assert.equal(h.listeners.get('visibilitychange')?.size, 0);
+});
+
+test('IndexedDB upgrade quota errors are not masked by a subsequent open AbortError', async () => {
+  const h = harness();
+  const m = indexedDBMock(h);
+  const pending = h.api.testIndexedDB();
+  m.request.onupgradeneeded({ oldVersion: 0 });
+  const transaction = m.request.transaction;
+  transaction.error = { name: 'QuotaExceededError' };
+  if (transaction.onabort) transaction.onabort();
+  m.request.error = { name: 'AbortError' };
+  m.request.onerror();
+  assert.equal((await pending).skipped, true);
+  assert.equal(h.timers.size, 0);
+});
+
+test('IndexedDB cleanup exceptions cannot strand the already-completed probe', async () => {
+  const h = harness();
+  const m = indexedDBMock(h);
+  m.request.result.close = () => { throw new Error('extension blocked close'); };
+  const pending = h.api.testIndexedDB();
+  m.request.onupgradeneeded({ oldVersion: 0 });
+  m.request.onsuccess();
+  assert.doesNotThrow(() => m.transaction.oncomplete());
+  assert.equal(await pending, true);
+  assert.deepEqual(m.calls.deleted, [m.calls.name]);
+});
+
+test('image cleanup exceptions cannot strand a successful decode', async () => {
+  const h = harness();
+  const pending = h.api.testImageDecode('data:image/webp;base64,test');
+  h.images[0].removeAttribute = () => { throw new Error('extension blocked cleanup'); };
+  assert.doesNotThrow(() => completeImages(h));
+  assert.equal(await pending, true);
+  assert.equal(h.timers.size, 0);
+  assert.equal(h.listeners.get('securitypolicyviolation').size, 0);
+});
+
+test('a throwing image source setter cleans up the probe instead of leaking its timer', async () => {
+  const h = harness();
+  Object.defineProperty(h.context.Image.prototype, 'src', { set() { throw new Error('blocked source'); } });
+  const pending = h.api.testImageDecode('data:image/webp;base64,test');
+  const result = await pending;
+  assert.equal(result.skipped, true);
+  assert.equal(h.timers.size, 0);
+  assert.equal(h.listeners.get('securitypolicyviolation').size, 0);
+});
+
+test('non-callable API placeholders are not reported as usable capabilities', async () => {
+  const h = harness();
+  Object.assign(h.context.navigator, { share: undefined, getGamepads: null, requestMIDIAccess: {}, clipboard: null });
+  h.context.window.showOpenFilePicker = undefined;
+  h.context.document.startViewTransition = false;
+  const find = await detect(h);
+  for (const name of ['Web Share API', 'Gamepad API', 'Web MIDI API', 'Clipboard API',
+    'File System Access API', 'View Transitions API']) {
+    assert.equal(find(name).supported, false, name);
+    assert.equal(find(name).skipped, false, name);
+  }
+});
+
+test('callable capability checks never invoke permission-sensitive APIs', async () => {
+  const h = harness();
+  const doNotCall = () => { assert.fail('capability checks must not request permissions'); };
+  Object.assign(h.context.navigator, { share: doNotCall, getGamepads: doNotCall,
+    requestMIDIAccess: doNotCall, clipboard: { writeText: doNotCall } });
+  h.context.window.showOpenFilePicker = doNotCall;
+  h.context.document.startViewTransition = doNotCall;
+  const find = await detect(h);
+  for (const name of ['Web Share API', 'Gamepad API', 'Web MIDI API', 'Clipboard API',
+    'File System Access API', 'View Transitions API']) assert.equal(find(name).supported, true, name);
+});
