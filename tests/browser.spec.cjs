@@ -396,3 +396,89 @@ test('user-agent markup is displayed as text, never interpreted as HTML', async 
   await expect(page.locator('.user-agent img')).toHaveCount(0);
   expect(await page.evaluate(() => window.uaInjected)).toBeUndefined();
 });
+
+for (const value of [null, {}]) {
+  test(`remaining API placeholders (${JSON.stringify(value)}) are not reported as supported`, async ({ page }) => {
+    const capabilities = require('./fixtures/capabilities.cjs');
+    // 保留 Performance 对象：浏览器测试工具自身也依赖它；该项由 VM 覆盖。
+    const items = capabilities.filter(item => item.property !== 'performance');
+    await page.addInitScript(({ items, value }) => {
+      Object.defineProperty(navigator, 'userAgent', { value: 'Mozilla/5.0 (Windows NT 10.0) Chrome/145.0.0.0' });
+      for (const item of items) {
+        const object = item.scope === 'element' ? HTMLElement.prototype
+          : item.scope === 'window' ? window : navigator;
+        Object.defineProperty(object, item.property, { configurable: true, value });
+        if (item.alternate) Object.defineProperty(object, item.alternate, { configurable: true, value });
+      }
+    }, { items, value });
+    await ready(page);
+    for (const item of items) {
+      await expect(feature(page, item.name).locator('.detail-status')).toHaveText('不支持');
+    }
+  });
+}
+
+for (const errorName of ['SecurityError', 'NotAllowedError', 'TypeError']) {
+  test(`API access ${errorName} uses the appropriate result state`, async ({ page }) => {
+    await page.addInitScript(errorName => {
+      for (const property of ['clipboard', 'serviceWorker']) {
+        Object.defineProperty(navigator, property, { get() { throw new DOMException('blocked', errorName); } });
+      }
+    }, errorName);
+    await ready(page);
+    for (const name of ['Clipboard API', 'Service Worker']) {
+      await expect(feature(page, name).locator('.detail-status')).toHaveText(errorName === 'TypeError' ? '不支持' : '已跳过');
+    }
+    const unsupported = await page.locator('.detail-status:not(.supported):not(.skipped)').count();
+    await expect(page.locator('.score')).toHaveText(String(Math.max(0, 100 - unsupported * 2)));
+  });
+}
+
+test('disabling CSS animations without reduced-motion leaves all completed content visible', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto('/');
+  await page.addStyleTag({ content: '*, *::before, *::after { animation: none !important; }' });
+  await expect(page.locator('.loading-overlay')).toHaveCount(0);
+  for (const selector of ['.block-score', '.block-engine', '.block-features', '.block-details', '.detail-item']) {
+    const opacities = await page.locator(selector).evaluateAll(elements => elements.map(el => getComputedStyle(el).opacity));
+    expect(opacities.length).toBeGreaterThan(0);
+    expect(opacities.every(value => value === '1')).toBe(true);
+  }
+});
+
+for (const mode of ['getter', 'method']) {
+  test(`customElements ${mode} restrictions cannot crash template compilation`, async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.addInitScript(mode => {
+      if (mode === 'getter') {
+        Object.defineProperty(window, 'customElements', { get() { throw new DOMException('blocked', 'SecurityError'); } });
+      } else {
+        customElements.get = () => { throw new DOMException('blocked', 'SecurityError'); };
+      }
+    }, mode);
+    await ready(page);
+    await expect(feature(page, 'Web Components').locator('.detail-status')).toHaveText(mode === 'getter' ? '已跳过' : '支持');
+    await expect(page.locator('.detail-item')).toHaveCount(60);
+    expect(errors).toEqual([]);
+  });
+}
+
+for (const [marker, category, penalty, warning] of [
+  ['Quark', '国产浏览器', 30, '你正在使用国产定制浏览器，它们基于主流浏览器二次开发，往往充斥着各类广告和骚扰内容，且存在较大的隐私和安全风险。有些国产浏览器甚至在网页画面中动态插入广告。梨建议你切换到原生 Chrome、Iridium、Brave 或 Firefox 浏览器以获得更清爽、稳定和安全的体验。'],
+  ['MicroMessenger', '套壳浏览器', 20, '你正在使用 App 内置浏览器，它们通常更新不及时、受到功能上的限制，且存在较大的隐私和安全风险。梨建议你使用原生 Chrome、Iridium、Brave 或 Firefox 浏览器以获得更稳定和安全的体验。']
+]) {
+  test(`protected ${category} warning, version and penalties remain visible and unchanged`, async ({ page }) => {
+    await page.addInitScript(marker => {
+      Object.defineProperty(navigator, 'userAgent', { value: `Mozilla/5.0 (Windows NT 10.0) ${marker} Chrome/145.0.0.0 Safari/537.36` });
+    }, marker);
+    await ready(page);
+    await expect(page.locator('.warning-content h3')).toHaveText(`检测到${category}`);
+    await expect(page.locator('.warning-content p')).toHaveText(warning);
+    await expect(page.locator('.block-warning')).toHaveCSS('opacity', '1');
+    await expect(page.locator('.browser-info')).toContainText('疑似恶意伪装成 145 的 109');
+    await expect(page.locator('.engine-recommendation')).toHaveText('你的浏览器疑似在恶意伪装更高版本，实际使用的可能是严重过时的 Chromium 内核（估测为 109 左右），存在重大安全风险。梨强烈建议你立即切换到原生 Chrome、Iridium、Brave 或 Firefox 浏览器。');
+    const unsupported = await page.locator('.detail-status:not(.supported):not(.skipped)').count();
+    await expect(page.locator('.score')).toHaveText(String(Math.max(0, 100 - penalty - 50 - unsupported * 2)));
+  });
+}
