@@ -1,6 +1,9 @@
 const { createApp, ref, computed, onMounted } = Vue;
 
 const app = createApp({
+  // 本页模板没有自定义元素。避免编译器自动调用受限的 customElements.get，
+  // 否则某个待检测 API 不可用会在挂载前使整页崩溃。
+  compilerOptions: { isCustomElement: () => false },
   setup() {
     // 基础数据
     const userAgent = ref('');
@@ -365,6 +368,11 @@ const app = createApp({
     const WEBP_SAMPLE = 'data:image/webp;base64,UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==';
     const AVIF_SAMPLE = 'data:image/avif;base64,AAAAIGZ0eXBhdmlmAAAAAGF2aWZtaWYxbWlhZk1BMUIAAADybWV0YQAAAAAAAAAoaGRscgAAAAAAAAAAcGljdAAAAAAAAAAAAAAAAGxpYmF2aWYAAAAADnBpdG0AAAAAAAEAAAAeaWxvYwAAAABEAAABAAEAAAABAAABGgAAAB0AAAAoaWluZgAAAAAAAQAAABppbmZlAgAAAAABAABhdjAxQ29sb3IAAAAAamlwcnAAAABLaXBjbwAAABRpc3BlAAAAAAAAAAIAAAACAAAAEHBpeGkAAAAAAwgICAAAAAxhdjFDgQ0MAAAAABNjb2xybmNseAACAAIAAYAAAAAXaXBtYQAAAAAAAAABAAEEAQKDBAAAACVtZGF0EgAKCBgANogQEAwgMg8f8D///8WfhwB8+ErK42A=';
 
+    // 只检查可调用接口，不申请权限、不启动设备或网络请求。
+    // `in` 会把扩展留下的 undefined / null / 空对象占位符误判为支持。
+    const hasMethods = (object, methods) => !!object &&
+      methods.every(method => typeof object[method] === 'function');
+
     // 检测现代Web功能
     // 每个检测项可选字段：
     //   policy            - 对应 Permissions Policy；页面明确禁用时跳过
@@ -390,8 +398,8 @@ const app = createApp({
         }},
         { name: 'Fetch API', test: () => typeof window.fetch === 'function' },
         { name: 'Promise', test: () => typeof window.Promise === 'function' },
-        { name: 'Service Worker', secure: true, test: () => 'serviceWorker' in navigator },
-        { name: 'WebAssembly', test: () => typeof WebAssembly === 'object' },
+        { name: 'Service Worker', secure: true, test: () => hasMethods(navigator.serviceWorker, ['register']) },
+        { name: 'WebAssembly', test: () => hasMethods(window.WebAssembly, ['compile', 'instantiate']) },
         { name: 'Async/Await', test: () => {
           try {
             new Function('async () => { await Promise.resolve(); }');
@@ -400,8 +408,8 @@ const app = createApp({
             return e instanceof EvalError;
           }
         }},
-        { name: 'Intersection Observer', test: () => 'IntersectionObserver' in window },
-        { name: 'Web Animation API', test: () => 'animate' in HTMLElement.prototype },
+        { name: 'Intersection Observer', test: () => typeof window.IntersectionObserver === 'function' },
+        { name: 'Web Animation API', test: () => typeof HTMLElement.prototype.animate === 'function' },
         { name: 'CSS Grid', test: () => !!(window.CSS && CSS.supports('display', 'grid')) },
         { name: 'CSS Variables', test: () => !!(window.CSS && CSS.supports('--a', '0')) },
         { name: 'WebGL 2.0', test: () => {
@@ -424,17 +432,17 @@ const app = createApp({
           releaseWebGLContext(gl1);
           return false;
         }},
-        { name: 'WebRTC', test: () => !!(window.RTCPeerConnection || window.webkitRTCPeerConnection) },
-        { name: 'Web Speech API', test: () => 'SpeechRecognition' in window || 'webkitSpeechRecognition' in window },
+        { name: 'WebRTC', test: () => typeof window.RTCPeerConnection === 'function' || typeof window.webkitRTCPeerConnection === 'function' },
+        { name: 'Web Speech API', test: () => typeof window.SpeechRecognition === 'function' || typeof window.webkitSpeechRecognition === 'function' },
         { name: 'Web Share API', policy: 'web-share', secure: true, skipOnLinuxDesktop: true, test: () => typeof navigator.share === 'function' },
-        { name: 'Payment Request API', policy: 'payment', secure: true, test: () => 'PaymentRequest' in window },
-        { name: 'Pointer Events', test: () => 'PointerEvent' in window },
-        { name: 'Web Audio API', test: () => 'AudioContext' in window || 'webkitAudioContext' in window },
-        { name: 'WebXR Device API', secure: true, skipOnIOS: true, test: () => 'xr' in navigator },
-        { name: 'WebUSB', policy: 'usb', secure: true, skipOnIOS: true, test: () => 'usb' in navigator },
-        { name: 'Web Bluetooth', policy: 'bluetooth', secure: true, skipOnIOS: true, test: () => 'bluetooth' in navigator },
-        { name: 'WebAuthn', secure: true, test: () => 'credentials' in navigator && 'PublicKeyCredential' in window },
-        { name: 'Geolocation API', policy: 'geolocation', secure: true, test: () => 'geolocation' in navigator },
+        { name: 'Payment Request API', policy: 'payment', secure: true, test: () => typeof window.PaymentRequest === 'function' },
+        { name: 'Pointer Events', test: () => typeof window.PointerEvent === 'function' },
+        { name: 'Web Audio API', test: () => typeof window.AudioContext === 'function' || typeof window.webkitAudioContext === 'function' },
+        { name: 'WebXR Device API', secure: true, skipOnIOS: true, test: () => hasMethods(navigator.xr, ['requestSession']) },
+        { name: 'WebUSB', policy: 'usb', secure: true, skipOnIOS: true, test: () => hasMethods(navigator.usb, ['requestDevice']) },
+        { name: 'Web Bluetooth', policy: 'bluetooth', secure: true, skipOnIOS: true, test: () => hasMethods(navigator.bluetooth, ['requestDevice']) },
+        { name: 'WebAuthn', secure: true, test: () => hasMethods(navigator.credentials, ['get', 'create']) && typeof window.PublicKeyCredential === 'function' },
+        { name: 'Geolocation API', policy: 'geolocation', secure: true, test: () => hasMethods(navigator.geolocation, ['getCurrentPosition']) },
         { name: 'IndexedDB', test: testIndexedDB },
         { name: 'Web Notifications', secure: true,
           // iOS 的 Notifications API 主要面向已添加到主屏幕的 Web App。
@@ -442,11 +450,11 @@ const app = createApp({
           skipIf: () => (isIOSDevice.value && !isStandalonePWA.value)
             ? 'iOS 普通标签页不支持，请添加到主屏幕后再检测'
             : null,
-          test: () => 'Notification' in window },
+          test: () => typeof window.Notification === 'function' },
         { name: 'Screen Orientation API', test: () => !!(screen.orientation &&
           typeof screen.orientation.type === 'string' && typeof screen.orientation.angle === 'number') },
         { name: 'Gamepad API', policy: 'gamepad', secure: true, test: () => typeof navigator.getGamepads === 'function' },
-        { name: 'Web Components', test: () => 'customElements' in window },
+        { name: 'Web Components', test: () => hasMethods(window.customElements, ['define', 'get']) },
         { name: '支持视频格式 WebM', test: () => {
           const video = document.createElement('video');
           if (!video.canPlayType) return false;
@@ -468,15 +476,15 @@ const app = createApp({
           return !!clipboard && ['read', 'readText', 'write', 'writeText']
             .some(method => typeof clipboard[method] === 'function');
         } },
-        { name: 'ResizeObserver', test: () => 'ResizeObserver' in window },
-        { name: 'Performance API', test: () => 'performance' in window },
+        { name: 'ResizeObserver', test: () => typeof window.ResizeObserver === 'function' },
+        { name: 'Performance API', test: () => hasMethods(window.performance, ['now']) },
         // 图片格式：改为真实解码测试
         // 原先的 canvas.toDataURL 只能检测“编码”能力
         // Chrome 至今不支持编码 AVIF、Safari 也长期不支持编码 WebP，导致假阳性
         { name: '支持图像格式 WebP', test: () => testImageDecode(WEBP_SAMPLE) },
         { name: '支持图像格式 AVIF', test: () => testImageDecode(AVIF_SAMPLE) },
         { name: 'URL.createObjectURL', test: () => typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function' },
-        { name: 'Web Locks API', secure: true, test: () => 'locks' in navigator },
+        { name: 'Web Locks API', secure: true, test: () => hasMethods(navigator.locks, ['request']) },
         // 新版 Chromium Android 已逐步提供文件选择器；这里使用能力检测，
         // 不再把整个 File System Access API 一刀切为桌面专属。
         { name: 'File System Access API', secure: true, test: () => typeof window.showOpenFilePicker === 'function' },
@@ -485,18 +493,18 @@ const app = createApp({
         { name: 'CSS 嵌套规则', test: () => !!(window.CSS && CSS.supports('selector(&)')) },
         { name: 'CSS aspect-ratio', test: () => !!(window.CSS && CSS.supports('aspect-ratio: 1/1')) },
         { name: 'CSS color-mix()', test: () => !!(window.CSS && CSS.supports('color: color-mix(in srgb, red, blue)')) },
-        { name: 'WebGPU API', secure: true, test: () => 'gpu' in navigator },
-        { name: 'WebTransport API', secure: true, test: () => 'WebTransport' in window },
-        { name: 'Compression Streams API', test: () => 'CompressionStream' in window },
-        { name: 'Cookie Store API', secure: true, test: () => 'cookieStore' in window },
-        { name: 'Idle Detection API', policy: 'idle-detection', secure: true, skipOnIOS: true, test: () => 'IdleDetector' in window },
+        { name: 'WebGPU API', secure: true, test: () => hasMethods(navigator.gpu, ['requestAdapter']) },
+        { name: 'WebTransport API', secure: true, test: () => typeof window.WebTransport === 'function' },
+        { name: 'Compression Streams API', test: () => typeof window.CompressionStream === 'function' },
+        { name: 'Cookie Store API', secure: true, test: () => hasMethods(window.cookieStore, ['get', 'set']) },
+        { name: 'Idle Detection API', policy: 'idle-detection', secure: true, skipOnIOS: true, test: () => typeof window.IdleDetector === 'function' },
         { name: 'Web MIDI API', policy: 'midi', secure: true, skipOnIOS: true, test: () => typeof navigator.requestMIDIAccess === 'function' },
-        { name: 'Reporting API', test: () => 'ReportingObserver' in window },
-        { name: 'Screen Wake Lock API', policy: 'screen-wake-lock', secure: true, test: () => 'wakeLock' in navigator },
-        { name: 'EyeDropper API', secure: true, desktopOnly: true, test: () => 'EyeDropper' in window },
-        { name: 'ScrollTimeline / ViewTimeline', test: () => 'ScrollTimeline' in window || 'ViewTimeline' in window },
-        { name: 'MediaSession API', test: () => 'mediaSession' in navigator },
-        { name: 'Credential Management API', secure: true, test: () => 'credentials' in navigator },
+        { name: 'Reporting API', test: () => typeof window.ReportingObserver === 'function' },
+        { name: 'Screen Wake Lock API', policy: 'screen-wake-lock', secure: true, test: () => hasMethods(navigator.wakeLock, ['request']) },
+        { name: 'EyeDropper API', secure: true, desktopOnly: true, test: () => typeof window.EyeDropper === 'function' },
+        { name: 'ScrollTimeline / ViewTimeline', test: () => typeof window.ScrollTimeline === 'function' || typeof window.ViewTimeline === 'function' },
+        { name: 'MediaSession API', test: () => hasMethods(navigator.mediaSession, ['setActionHandler']) },
+        { name: 'Credential Management API', secure: true, test: () => hasMethods(navigator.credentials, ['get', 'create']) },
         // --- 针对 Chromium 120-150 新增的新特性检测 ---
         { name: 'Popover API', test: () => 'popover' in HTMLElement.prototype },
         { name: 'View Transitions API', test: () => typeof document.startViewTransition === 'function' },
@@ -523,7 +531,12 @@ const app = createApp({
             supported = !!outcome;
           }
         } catch (e) {
-          supported = false;
+          // 明确的安全/权限拒绝表示无法评估，而非浏览器缺少此功能。
+          // 其他异常（例如 TypeError）仍按检测失败处理，不能一律免除扣分。
+          if (e && (e.name === 'SecurityError' || e.name === 'NotAllowedError')) {
+            skipped = true;
+            reason = 'API 访问被安全策略或权限限制，无法评估';
+          }
         }
 
         return { name: feature.name, supported, skipped, reason };

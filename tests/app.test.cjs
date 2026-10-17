@@ -660,3 +660,80 @@ test('callable capability checks never invoke permission-sensitive APIs', async 
   for (const name of ['Web Share API', 'Gamepad API', 'Web MIDI API', 'Clipboard API',
     'File System Access API', 'View Transitions API']) assert.equal(find(name).supported, true, name);
 });
+
+const capabilities = require('./fixtures/capabilities.cjs');
+const capabilityScope = (h, scope) => scope === 'element'
+  ? h.context.HTMLElement.prototype : h.context[scope];
+
+for (const [label, value] of [['undefined', undefined], ['null', null], ['empty object', {}], ['boolean', false]]) {
+  test(`remaining capability checks reject ${label} placeholders`, async () => {
+    const h = harness();
+    for (const item of capabilities) {
+      const object = capabilityScope(h, item.scope);
+      object[item.property] = value;
+      if (item.alternate) object[item.alternate] = value;
+    }
+    const find = await detect(h);
+    for (const item of capabilities) {
+      assert.equal(find(item.name).supported, false, item.name);
+      assert.equal(find(item.name).skipped, false, item.name);
+    }
+  });
+}
+
+test('callable interfaces are supported without invoking constructors or permission APIs', async () => {
+  const h = harness();
+  const doNotCall = () => { assert.fail('must not invoke the detected interface'); };
+  for (const item of capabilities) {
+    const value = item.methods ? Object.fromEntries(item.methods.map(name => [name, doNotCall])) : doNotCall;
+    capabilityScope(h, item.scope)[item.property] = value;
+  }
+  const find = await detect(h);
+  for (const item of capabilities) assert.equal(find(item.name).supported, true, item.name);
+});
+
+test('partial interface objects cannot pass a required-method check', async () => {
+  for (const item of capabilities.filter(item => item.methods)) {
+    for (const missing of item.methods) {
+      const h = harness();
+      capabilityScope(h, item.scope)[item.property] = Object.fromEntries(item.methods.map(name =>
+        [name, name === missing ? null : () => { assert.fail('must not call'); }]
+      ));
+      const find = await detect(h);
+      assert.equal(find(item.name).supported, false, `${item.name}.${missing}`);
+    }
+  }
+});
+
+test('working alternative constructors are not masked by truthy invalid primary properties', async () => {
+  const h = harness();
+  for (const item of capabilities.filter(item => item.alternate)) {
+    const object = capabilityScope(h, item.scope);
+    object[item.property] = {};
+    object[item.alternate] = () => { assert.fail('must not construct'); };
+  }
+  const find = await detect(h);
+  for (const item of capabilities.filter(item => item.alternate)) assert.equal(find(item.name).supported, true, item.name);
+});
+
+for (const errorName of ['SecurityError', 'NotAllowedError', 'TypeError']) {
+  test(`feature getter ${errorName} is classified without aborting other probes`, async () => {
+    const h = harness();
+    Object.defineProperty(h.context.navigator, 'clipboard', { get() { throw { name: errorName }; } });
+    const find = await detect(h);
+    const result = find('Clipboard API');
+    assert.equal(result.supported, false);
+    assert.equal(result.skipped, errorName !== 'TypeError');
+    if (result.skipped) assert.match(result.reason, /安全策略|权限/);
+    assert.equal(find('Storage API').supported, true);
+    assert.equal(h.state.detectionResults.value.length, 60);
+  });
+}
+
+test('a denied interface getter is not mistaken for an exposed usable API', async () => {
+  const h = harness();
+  Object.defineProperty(h.context.navigator, 'serviceWorker', { get() { throw { name: 'SecurityError' }; } });
+  const find = await detect(h);
+  assert.equal(find('Service Worker').supported, false);
+  assert.equal(find('Service Worker').skipped, true);
+});

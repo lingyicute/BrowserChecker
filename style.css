@@ -107,14 +107,14 @@ body {
   border-radius: 16px;
   padding: 25px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
-  opacity: 0;
-  transform: translateY(50px);
+  /* 内容默认可见，动画只是增强；禁用动画不应隐藏结果。 */
+  opacity: 1;
   overflow: hidden;
 }
 
 /* 块状项目动画 */
 .content-loaded .block-item {
-  animation: slideInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: slideInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .content-loaded .block-score {
@@ -419,14 +419,11 @@ body {
   padding: 12px 0;
   border-bottom: 1px solid #e2e8f0;
   align-items: center;
-  animation: fadeIn 0.3s ease forwards;
-  opacity: 0;
+  opacity: 1;
 }
 
 .content-loaded .detail-item {
-  animation-name: fadeIn;
-  animation-duration: 0.3s;
-  animation-fill-mode: forwards;
+  animation: fadeIn 0.3s ease both;
 }
 
 @keyframes fadeIn {
