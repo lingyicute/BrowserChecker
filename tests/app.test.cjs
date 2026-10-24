@@ -88,7 +88,7 @@ async function detect(h) {
   return name => h.state.detectionResults.value.find(item => item.name === name);
 }
 
-test('protected browser policy and warning template remain byte-identical except FxiOS recognition', () => {
+test('browser policy and warning template remain stable', () => {
   const lock = require('./fixtures/policy-lock.json');
   const hash = text => createHash('sha256').update(text).digest('hex');
   const policy = source.slice(source.indexOf('    // 检测浏览器类型和版本'), source.indexOf('    // 收尾'))
@@ -124,12 +124,25 @@ test('protected classification, deduction and disguised-version boundaries (378 
   assert.equal(h.state.totalScore.value, 30);
 });
 
-test('Chromium version score boundaries remain unchanged', () => {
-  for (const [version, penalty] of [[109,50],[110,40],[119,40],[120,30],[129,30],[130,20],[137,20],[138,10],[144,10],[145,0],[150,0],[151,0]]) {
+test('Chromium version score tiers track the current Stable baseline', () => {
+  for (const [version, penalty] of [[109,50],[110,40],[115,40],[116,40],[125,40],[126,30],[135,30],[136,20],[143,20],[144,10],[150,10],[151,0],[156,0],[157,0]]) {
     const h = harness();
     h.context.navigator.userAgent = `Chrome/${version}.0.0.0`;
     h.api.detectBrowserInfo();
     assert.equal(h.state.totalScore.value, 100 - penalty);
+  }
+});
+
+test('Chromium upgrade recommendations track the current Stable baseline', () => {
+  for (const [version, text] of [
+    [126, '严重过时'], [127, '落后较多'], [141, '落后较多'],
+    [142, '有些落后'], [150, '有些落后'], [151, '较新'],
+    [155, '较新'], [156, '处于最新前沿'], [157, '处于最新前沿']
+  ]) {
+    const h = harness();
+    h.context.navigator.userAgent = `Chrome/${version}.0.0.0`;
+    h.api.detectBrowserInfo();
+    assert.ok(h.state.recommendation.value.includes(text), `Chromium ${version}`);
   }
 });
 

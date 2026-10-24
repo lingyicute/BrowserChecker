@@ -566,6 +566,10 @@ const app = createApp({
       detectionResults.value = results;
     };
 
+    // 与当前 Chrome Stable 主版本对齐；Chrome 从 2026 年起加快发布节奏，
+    // 更新此基线时同步调整下方推荐阈值和回归测试。
+    const latestChromiumVersion = 156;
+
     // 检测浏览器类型和版本
     const detectBrowserInfo = () => {
       const ua = navigator.userAgent;
@@ -615,18 +619,19 @@ const app = createApp({
 
         const version = realVersion;
 
-        // 版本打分阶梯
-        if (version >= 145 && version <= 150) {
-          // 最新的 145 - 150 版本，不扣分
-        } else if (version >= 138 && version <= 144) {
+        // 版本分档相对当前 Stable 基线计算，避免新主版本落入未覆盖区间而漏扣分。
+        if (version >= latestChromiumVersion - 5) {
+          // 当前及最近五个主版本不扣分；更新发布基线时分档随之平移。
+        } else if (version >= latestChromiumVersion - 12) {
           totalScore.value -= 10;
-        } else if (version >= 130 && version <= 137) {
+        } else if (version >= latestChromiumVersion - 20) {
           totalScore.value -= 20;
-        } else if (version >= 120 && version <= 129) {
+        } else if (version >= latestChromiumVersion - 30) {
           totalScore.value -= 30;
-        } else if (version >= 110 && version <= 119) {
+        } else if (version >= 110) {
+          // 延续旧策略的最低版本分界，避免改变旧版本的基础扣分含义。
           totalScore.value -= 40;
-        } else if (version < 110) {
+        } else {
           totalScore.value -= 50;
         }
       }
@@ -657,13 +662,13 @@ const app = createApp({
           version = Number(chromeVersion.value) || 0;
 
           // 建议中的 Iridium 是本人出品的 chromium 浏览器。
-          if (version <= 120) {
+          if (version <= latestChromiumVersion - 30) {
             upgradeSuggestion = '你的浏览器内核版本已严重过时（Chromium ' + version + '），与最新的 Chromium 相比缺失大量核心安全补丁。梨强烈建议你立即升级浏览器。';
-          } else if (version <= 135) {
+          } else if (version <= latestChromiumVersion - 15) {
             upgradeSuggestion = '你的浏览器内核版本落后较多（Chromium ' + version + '）。梨建议你升级到最新的 Chrome、Iridium、Brave 或 Firefox 浏览器以获得更好的性能和安全保障。';
-          } else if (version <= 144) {
+          } else if (version <= latestChromiumVersion - 6) {
             upgradeSuggestion = '你的浏览器内核版本（Chromium ' + version + '）有些落后，建议适时更新。';
-          } else if (version <= 149) {
+          } else if (version < latestChromiumVersion) {
             upgradeSuggestion = '你的浏览器内核版本（Chromium ' + version + '）较新，但梨仍然建议你更新至最新的 Chrome、Iridium、Brave 或 Firefox 浏览器以获得最佳性能和安全性。';
           } else {
             upgradeSuggestion = '你的浏览器内核版本（Chromium ' + version + '）处于最新前沿，能够体验最先进的网络技术。';
