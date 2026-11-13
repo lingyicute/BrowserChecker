@@ -525,7 +525,7 @@ body {
   }
 
   .container {
-    padding: 12px;
+    padding: 12px 12px 32px;
   }
 
   .block-item {
