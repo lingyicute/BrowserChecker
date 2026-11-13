@@ -23,7 +23,7 @@ test('complete detection, decode real image samples, and show consistent statist
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await ready(page);
-  await expect(page.locator('.detail-item')).toHaveCount(60);
+  await expect(page.locator('.detail-item')).toHaveCount(66);
   await expect(feature(page, '支持图像格式 WebP').locator('.detail-status')).toHaveText('支持');
   await expect(feature(page, '支持图像格式 AVIF').locator('.detail-status')).toHaveText('支持');
   await expect(page.locator('.score')).toHaveText(/^\d+$/);
@@ -162,7 +162,7 @@ test('a late successful startup clears a previous timeout message', async ({ pag
   await page.clock.runFor(3000);
   await expect(page.locator('#startup-error')).toBeHidden();
   await expect(page.locator('.container')).toBeVisible();
-  await expect(page.locator('.detail-item')).toHaveCount(60);
+  await expect(page.locator('.detail-item')).toHaveCount(66);
 });
 
 test('real insecure HTTP origin skips APIs requiring a secure context', async ({ page }) => {
@@ -200,7 +200,7 @@ test('optional environment and animation failures preserve the completed result'
   });
   await ready(page);
   await expect(page.locator('.score-text')).toHaveText('浏览器得分');
-  await expect(page.locator('.detail-item')).toHaveCount(60);
+  await expect(page.locator('.detail-item')).toHaveCount(66);
   await expect(page.locator('.score')).toHaveText(/^\d+$/);
 });
 
@@ -315,7 +315,7 @@ for (const property of ['mobile', 'maxTouchPoints', 'standalone']) {
     }, property);
     await ready(page);
     await expect(page.locator('.score-text')).toHaveText('浏览器得分');
-    await expect(page.locator('.detail-item')).toHaveCount(60);
+    await expect(page.locator('.detail-item')).toHaveCount(66);
   });
 }
 
@@ -459,7 +459,7 @@ for (const mode of ['getter', 'method']) {
     }, mode);
     await ready(page);
     await expect(feature(page, 'Web Components').locator('.detail-status')).toHaveText(mode === 'getter' ? '已跳过' : '支持');
-    await expect(page.locator('.detail-item')).toHaveCount(60);
+    await expect(page.locator('.detail-item')).toHaveCount(66);
     expect(errors).toEqual([]);
   });
 }

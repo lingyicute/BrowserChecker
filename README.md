@@ -25,7 +25,7 @@
 
 ## 📖 Overview
 
-点开页面，它就会：识别你的浏览器类型与内核版本，检查 60 项现代 Web 能力，分辨国产浏览器、套壳浏览器和应用内 WebView，并把结果整理成一个 0–100 的分数和几条可读的建议。
+点开页面，它就会：识别你的浏览器类型与内核版本，检查 66 项现代 Web 能力，分辨国产浏览器、套壳浏览器和应用内 WebView，并把结果整理成一个 0–100 的分数和几条可读的建议。
 
 这个项目仍然是一个**无需构建的静态网站**：`index.html`、`style.css`、`app.js` 和 `startup.js` 就是运行时的全部。没有后端、没有账号、没有追踪，部署到任意静态托管即可。你也可以直接打开 `index.html`，或访问官方站点 [test.92li.uk](https://test.92li.uk)。
 
@@ -33,8 +33,8 @@
 
 ## ✨ Features
 
-- **🔍 60 项现代 Web 能力检测**
-  - 覆盖 ES6、Fetch API、WebAssembly 等常见现代特性。
+- **🔍 66 项现代 Web 能力检测**
+  - 覆盖 ES6、Fetch API、WebAssembly 等常见特性，以及 Navigation API、Math.sumPrecise()、Iterator.concat()、Intl.Locale 信息 API、CSS field-sizing 与 :open 等现代特性。
   - 每项结果都会显示为「支持 / 不支持 / 已跳过」，并附上跳过原因。
 
 - **🧭 浏览器与内核信息**
@@ -163,9 +163,9 @@ Pull Request 会自动运行回归测试；主分支 Pages 部署也必须先通
 
 - 分数是本站规则下的特性可用性评估，不是性能基准测试，也不是完整安全审计。API 存在不等于已经授权、具有硬件支持，或所有调用都能成功；检测不会申请摄像头、定位、蓝牙等权限。
 - 浏览器识别依赖 User-Agent。品牌和版本可被伪装，iOS Firefox 的 `FxiOS` 会被识别为 Firefox，但不会因此标记为 Gecko 内核。
-- 运行时使用固定版本的 Vue 生产构建并启用 SRI。首次打开（包括 `file://`）仍需网络访问 CDN；离线使用需自行保存对应依赖并调整引用。更新 Vue 时请同步 URL、`package.json` / lockfile、SRI 和测试中的 URL。
+- 运行时使用固定版本的 Vue 生产构建并启用 SRI。首次打开（包括 `file://`）仍需网络访问 CDN。
 - 当前使用 Vue 的 DOM 模板运行时编译器，严格禁止 `unsafe-eval` 的 CSP 无法启动完整页面。
-- 显示模式查询、可选 Client Hints 或分数动画被禁用时会降级，不应导致整个检测失败。后台页面和减少动态效果模式直接提供最终分数。
+- 显示模式查询、可选 Client Hints 或分数动画被禁用时会降级，不会导致整个检测失败。后台页面和减少动态效果模式直接提供最终分数。
 - 详细结果区域可通过 Tab 聚焦，再用方向键、Page Down / End 等按键滚动；窄屏下特性名称自动换行。
 
 <br>

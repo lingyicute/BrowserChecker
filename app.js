@@ -509,7 +509,17 @@ const app = createApp({
         { name: 'Popover API', test: () => 'popover' in HTMLElement.prototype },
         { name: 'View Transitions API', test: () => typeof document.startViewTransition === 'function' },
         { name: 'CSS light-dark()', test: () => !!(window.CSS && CSS.supports('color: light-dark(white, black)')) },
-        { name: 'Speculation Rules API', skipOnIOS: true, test: () => !!(HTMLScriptElement.supports && HTMLScriptElement.supports('speculationrules')) }
+        { name: 'Speculation Rules API', skipOnIOS: true, test: () => !!(HTMLScriptElement.supports && HTMLScriptElement.supports('speculationrules')) },
+        // Baseline 2026 / ECMAScript 2026 新增能力：仅探测稳定、无需权限的接口，不执行导航或设备操作。
+        { name: 'Navigation API', test: () => hasMethods(window.navigation, ['navigate', 'entries']) },
+        { name: 'Math.sumPrecise()', test: () => typeof Math.sumPrecise === 'function' &&
+          Math.sumPrecise([1e20, 0.1, -1e20]) === 0.1 },
+        { name: 'Iterator.concat()', test: () => typeof Iterator === 'function' &&
+          typeof Iterator.concat === 'function' },
+        { name: 'Intl.Locale 信息 API', test: () => typeof Intl === 'object' &&
+          typeof Intl.Locale === 'function' && typeof Intl.Locale.prototype.getWeekInfo === 'function' },
+        { name: 'CSS field-sizing', test: () => !!(window.CSS && CSS.supports('field-sizing: content')) },
+        { name: 'CSS :open 选择器', test: () => !!(window.CSS && CSS.supports('selector(:open)')) }
       ];
 
       // 检测每项功能并记录结果（支持异步检测）

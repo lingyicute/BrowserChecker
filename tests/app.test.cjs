@@ -302,7 +302,7 @@ test('feature score, sorting, support rate and notice counts exclude skipped ite
   const h = harness();
   await detect(h);
   const items = h.state.detectionResults.value;
-  assert.equal(items.length, 60);
+  assert.equal(items.length, 66);
   const supported = items.filter(i => i.supported).length;
   const unsupported = items.filter(i => !i.supported && !i.skipped).length;
   assert.equal(h.state.totalScore.value, 100 - unsupported * 2);
@@ -313,6 +313,41 @@ test('feature score, sorting, support rate and notice counts exclude skipped ite
   assert.equal(h.state.skipNotices.value.reduce((sum, item) => sum + item.count, 0), h.state.getSkippedFeaturesCount());
   const rank = i => i.skipped ? 2 : (i.supported ? 0 : 1);
   assert.deepEqual(items.map(rank), items.map(rank).sort());
+});
+
+test('new Baseline and ECMAScript features are detected without navigation or permission side effects', async () => {
+  const h = harness();
+  const doNotInvoke = () => { assert.fail('capability probes must not navigate or invoke iterator APIs'); };
+  h.context.window.navigation = { navigate: doNotInvoke, entries: doNotInvoke };
+  h.context.Math = Object.assign(Object.create(Math), {
+    sumPrecise(values) {
+      assert.deepEqual(Array.from(values), [1e20, 0.1, -1e20]);
+      return 0.1;
+    }
+  });
+  h.context.Iterator = function Iterator() {};
+  h.context.Iterator.concat = doNotInvoke;
+  h.context.Intl = Object.assign(Object.create(Intl), { Locale: function Locale() {} });
+  h.context.Intl.Locale.prototype.getWeekInfo = doNotInvoke;
+  const find = await detect(h);
+  for (const name of ['Navigation API', 'Math.sumPrecise()', 'Iterator.concat()',
+    'Intl.Locale 信息 API', 'CSS field-sizing', 'CSS :open 选择器']) {
+    assert.equal(find(name).supported, true, name);
+    assert.equal(find(name).skipped, false, name);
+  }
+});
+
+test('new feature probes reject incomplete or non-callable API placeholders', async () => {
+  const h = harness();
+  h.context.window.navigation = { navigate: {}, entries: () => [] };
+  h.context.Math = Object.assign(Object.create(Math), { sumPrecise: {} });
+  h.context.Iterator = { concat: null };
+  h.context.Intl = { Locale: function Locale() {} };
+  const find = await detect(h);
+  for (const name of ['Navigation API', 'Math.sumPrecise()', 'Iterator.concat()', 'Intl.Locale 信息 API']) {
+    assert.equal(find(name).supported, false, name);
+    assert.equal(find(name).skipped, false, name);
+  }
 });
 
 test('missing requestAnimationFrame does not overwrite the score with 50', () => {
@@ -354,7 +389,7 @@ test('blocked optional environment APIs do not abort detection', async () => {
   h.runTimers(800);
   assert.equal(h.state.detectionError.value, false);
   assert.equal(h.state.isLoading.value, false);
-  assert.equal(h.state.detectionResults.value.length, 60);
+  assert.equal(h.state.detectionResults.value.length, 66);
 });
 
 test('animation exceptions cannot invalidate a completed score', () => {
@@ -559,7 +594,7 @@ for (const property of ['mobile', 'maxTouchPoints', 'standalone']) {
     await pending;
     h.runTimers(800);
     assert.equal(h.state.detectionError.value, false);
-    assert.equal(h.state.detectionResults.value.length, 60);
+    assert.equal(h.state.detectionResults.value.length, 66);
   });
 }
 
@@ -739,7 +774,7 @@ for (const errorName of ['SecurityError', 'NotAllowedError', 'TypeError']) {
     assert.equal(result.skipped, errorName !== 'TypeError');
     if (result.skipped) assert.match(result.reason, /安全策略|权限/);
     assert.equal(find('Storage API').supported, true);
-    assert.equal(h.state.detectionResults.value.length, 60);
+    assert.equal(h.state.detectionResults.value.length, 66);
   });
 }
 
