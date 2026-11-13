@@ -361,20 +361,6 @@ body {
   margin-top: 12px;
 }
 
-.features-recommendation {
-  background: white;
-  padding: 16px;
-  border-radius: 12px;
-  margin-top: 16px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-}
-
-.features-recommendation p {
-  margin: 0;
-  color: #334155;
-  font-size: 14px;
-}
-
 /* 详细检测结果块 */
 .block-details {
   padding-bottom: 10px;
