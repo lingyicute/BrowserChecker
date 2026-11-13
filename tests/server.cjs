@@ -30,4 +30,4 @@ http.createServer((req, res) => {
   if (url.searchParams.get('csp') === 'images') res.setHeader('Content-Security-Policy', "img-src 'none'");
   if (url.searchParams.get('csp') === 'strict') res.setHeader('Content-Security-Policy', "script-src 'self' https://cdn.jsdelivr.net");
   res.end(req.method === 'HEAD' ? undefined : body);
-}).listen(4173, '0.0.0.0');
+}).listen(4173, '127.0.0.1');
