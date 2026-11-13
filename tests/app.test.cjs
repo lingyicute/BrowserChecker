@@ -429,11 +429,12 @@ test('hidden pages immediately get the final score without scheduling animation'
 test('explicit Permissions Policy denial skips features without deducting points', async () => {
   const h = harness();
   const names = ['geolocation', 'gamepad', 'usb', 'bluetooth', 'payment', 'web-share',
-    'idle-detection', 'midi', 'screen-wake-lock'];
+    'idle-detection', 'midi', 'screen-wake-lock', 'xr-spatial-tracking'];
   h.context.document.featurePolicy = { features: () => names, allowsFeature: () => false };
   const find = await detect(h);
   for (const name of ['Geolocation API', 'Gamepad API', 'WebUSB', 'Web Bluetooth',
-    'Payment Request API', 'Web Share API', 'Idle Detection API', 'Web MIDI API', 'Screen Wake Lock API']) {
+    'Payment Request API', 'Web Share API', 'Idle Detection API', 'Web MIDI API', 'Screen Wake Lock API',
+    'WebXR Device API']) {
     assert.equal(find(name).skipped, true, name);
     assert.match(find(name).reason, /Permissions Policy/);
   }

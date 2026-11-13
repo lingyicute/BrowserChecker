@@ -438,7 +438,7 @@ const app = createApp({
         { name: 'Payment Request API', policy: 'payment', secure: true, test: () => typeof window.PaymentRequest === 'function' },
         { name: 'Pointer Events', test: () => typeof window.PointerEvent === 'function' },
         { name: 'Web Audio API', test: () => typeof window.AudioContext === 'function' || typeof window.webkitAudioContext === 'function' },
-        { name: 'WebXR Device API', secure: true, skipOnIOS: true, test: () => hasMethods(navigator.xr, ['requestSession']) },
+        { name: 'WebXR Device API', policy: 'xr-spatial-tracking', secure: true, skipOnIOS: true, test: () => hasMethods(navigator.xr, ['requestSession']) },
         { name: 'WebUSB', policy: 'usb', secure: true, skipOnIOS: true, test: () => hasMethods(navigator.usb, ['requestDevice']) },
         { name: 'Web Bluetooth', policy: 'bluetooth', secure: true, skipOnIOS: true, test: () => hasMethods(navigator.bluetooth, ['requestDevice']) },
         { name: 'WebAuthn', secure: true, test: () => hasMethods(navigator.credentials, ['get', 'create']) && typeof window.PublicKeyCredential === 'function' },
