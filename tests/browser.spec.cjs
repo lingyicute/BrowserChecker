@@ -4,8 +4,21 @@ const fs = require('node:fs');
 const vueURL = 'https://cdn.jsdelivr.net/npm/vue@3.5.44/dist/vue.global.prod.js';
 const feature = (page, name) => page.locator('.detail-item').filter({ has: page.locator('.detail-name', { hasText: name }) });
 
-// 使用锁定版本的同一份 npm 发布文件，测试不依赖外网，但仍由浏览器验证 SRI。
+// Playwright 自带的 Chromium 版本落后于应用的 Stable 基线，会触发版本扣分，
+// 使“100 - 不支持数 * 2”的分数断言随浏览器版本漂移。这里把 Chromium 的 UA 主版本
+// 固定为应用当前基线，让测试只验证功能扣分；其他引擎不受影响。
+const latestChromium = Number(/latestChromiumVersion\s*=\s*(\d+)/.exec(fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8'))[1]);
+
 test.beforeEach(async ({ page }) => {
+  await page.addInitScript(version => {
+    const ua = navigator.userAgent;
+    if (!/Chrome\/\d+/.test(ua)) return;
+    Object.defineProperty(navigator, 'userAgent', {
+      configurable: true,
+      get() { return ua.replace(/Chrome\/\d+/, 'Chrome/' + version); }
+    });
+  }, latestChromium);
+  // 使用锁定版本的同一份 npm 发布文件，测试不依赖外网，但仍由浏览器验证 SRI。
   await page.route(vueURL, route => route.fulfill({
     path: require.resolve('vue/dist/vue.global.prod.js'),
     contentType: 'application/javascript',
