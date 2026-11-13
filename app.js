@@ -578,7 +578,7 @@ const app = createApp({
 
     // 与当前 Chrome Stable 主版本对齐；Chrome 从 2026 年起加快发布节奏，
     // 更新此基线时同步调整下方推荐阈值和回归测试。
-    const latestChromiumVersion = 156;
+    const latestChromiumVersion = 157;
 
     // 检测浏览器类型和版本
     const detectBrowserInfo = () => {

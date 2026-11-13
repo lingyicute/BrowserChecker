@@ -125,7 +125,7 @@ test('protected classification, deduction and disguised-version boundaries (378 
 });
 
 test('Chromium version score tiers track the current Stable baseline', () => {
-  for (const [version, penalty] of [[109,50],[110,40],[115,40],[116,40],[125,40],[126,30],[135,30],[136,20],[143,20],[144,10],[150,10],[151,0],[156,0],[157,0]]) {
+  for (const [version, penalty] of [[109,50],[110,40],[115,40],[126,40],[127,30],[136,30],[137,20],[144,20],[145,10],[151,10],[152,0],[157,0],[158,0]]) {
     const h = harness();
     h.context.navigator.userAgent = `Chrome/${version}.0.0.0`;
     h.api.detectBrowserInfo();
@@ -135,9 +135,9 @@ test('Chromium version score tiers track the current Stable baseline', () => {
 
 test('Chromium upgrade recommendations track the current Stable baseline', () => {
   for (const [version, text] of [
-    [126, '严重过时'], [127, '落后较多'], [141, '落后较多'],
-    [142, '有些落后'], [150, '有些落后'], [151, '较新'],
-    [155, '较新'], [156, '处于最新前沿'], [157, '处于最新前沿']
+    [127, '严重过时'], [128, '落后较多'], [142, '落后较多'],
+    [143, '有些落后'], [151, '有些落后'], [152, '较新'],
+    [156, '较新'], [157, '处于最新前沿'], [158, '处于最新前沿']
   ]) {
     const h = harness();
     h.context.navigator.userAgent = `Chrome/${version}.0.0.0`;
