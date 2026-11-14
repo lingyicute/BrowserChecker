@@ -92,11 +92,16 @@ const app = createApp({
     };
     const prefersReducedMotion = () => matchesMedia('(prefers-reduced-motion: reduce)');
 
+    // 隐私扩展可能只拦截某一个 getter；可选提示失败不能使整页检测失败。
+    const optionalValue = (object, property) => {
+      try { return object && object[property]; } catch (e) { return undefined; }
+    };
+
     const animateScore = () => {
       const targetScore = totalScore.value;
       if (!Number.isFinite(targetScore) || targetScore <= 0 ||
           typeof window.requestAnimationFrame !== 'function' || prefersReducedMotion() ||
-          document.hidden) {
+          optionalValue(document, 'hidden') === true) {
         displayScore.value = targetScore;
         return;
       }
@@ -117,7 +122,7 @@ const app = createApp({
           }
         } catch (e) { /* 已排队的回调也会检查 settled，不再覆盖最终分数。 */ }
       };
-      const onVisibilityChange = () => { if (document.hidden) finish(); };
+      const onVisibilityChange = () => { if (optionalValue(document, 'hidden') === true) finish(); };
       const updateScore = (timestamp) => {
         if (settled) return;
         if (!Number.isFinite(timestamp)) {
@@ -141,13 +146,9 @@ const app = createApp({
       // 第一帧和中途停帧都必须有兜底；进入后台时立即完成，避免停在部分分数。
       displayScore.value = targetScore;
       timer = setTimeout(finish, duration + 100);
-      document.addEventListener('visibilitychange', onVisibilityChange);
+      // 监听失败只影响“切到后台立即收尾”，仍有定时器兜底，不应使检测失败。
+      try { document.addEventListener('visibilitychange', onVisibilityChange); } catch (e) {}
       scheduleFrame();
-    };
-
-    // 隐私扩展可能只拦截某一个 getter；可选提示失败不能使整页检测失败。
-    const optionalValue = (object, property) => {
-      try { return object && object[property]; } catch (e) { return undefined; }
     };
 
     // 检测运行环境（设备类型 / 平台 / 安全上下文）
@@ -246,7 +247,7 @@ const app = createApp({
         resolve(result);
       };
       const onPolicyViolation = (event) => {
-        if (event.disposition === 'enforce' && event.effectiveDirective === 'img-src' &&
+        if (event && event.disposition === 'enforce' && event.effectiveDirective === 'img-src' &&
             (event.blockedURI === 'data' || event.blockedURI === 'data:' || event.blockedURI === dataUri)) {
           finish({ skipped: true, reason: '图片解码样本被内容安全策略（CSP）阻止' });
         }

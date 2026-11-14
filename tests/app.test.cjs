@@ -946,3 +946,28 @@ test('a denied interface getter is not mistaken for an exposed usable API', asyn
   assert.equal(find('Service Worker').supported, false);
   assert.equal(find('Service Worker').skipped, true);
 });
+
+test('blocked document.hidden and visibilitychange registration never fail an otherwise complete detection', () => {
+  const h = harness();
+  Object.defineProperty(h.context.document, 'hidden', { get() { throw new Error('visibility blocked'); } });
+  h.context.document.addEventListener = () => { throw new Error('listener blocked'); };
+  let next;
+  h.context.window.requestAnimationFrame = callback => { next = callback; return 1; };
+  h.state.totalScore.value = 84;
+  assert.doesNotThrow(() => h.api.animateScore());
+  assert.equal(h.state.displayScore.value, 84);
+  next(1000);
+  next(2500);
+  assert.equal(h.state.displayScore.value, 84);
+  assert.equal(h.timers.size, 0);
+});
+
+test('image probe ignores malformed securitypolicyviolation events', async () => {
+  const h = harness();
+  const pending = h.api.testImageDecode('data:image/webp;base64,AAAA');
+  const handlers = [...h.listeners.get('securitypolicyviolation')];
+  assert.doesNotThrow(() => handlers.forEach(fn => fn(undefined)));
+  h.images[0].naturalWidth = h.images[0].naturalHeight = 1;
+  h.images[0].onload();
+  assert.equal(await pending, true);
+});
