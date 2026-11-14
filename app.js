@@ -320,7 +320,7 @@ const app = createApp({
       };
       const fail = (error) => {
         const limited = error && ['SecurityError', 'NotAllowedError', 'QuotaExceededError',
-          'InvalidStateError', 'UnknownError'].includes(error.name);
+          'NS_ERROR_DOM_QUOTA_REACHED', 'InvalidStateError', 'UnknownError'].includes(error.name);
         finish(limited ? restricted : false);
       };
       try {
@@ -333,7 +333,7 @@ const app = createApp({
         request.onupgradeneeded = (event) => {
           // 万一名称碰撞，不读写、更不删除已有数据库；超时后的升级直接回滚。
           if (settled || event.oldVersion !== 0) {
-            request.transaction.abort();
+            try { request.transaction?.abort(); } catch (e) {}
             if (!settled) finish(restricted);
             return;
           }
@@ -341,11 +341,15 @@ const app = createApp({
           // 升级写入可能异步触发 QuotaExceededError，open 请求随后只报告 AbortError。
           // 保留原始事务错误，避免把存储限制误算为浏览器缺少 IndexedDB。
           const upgrade = request.transaction;
-          upgrade.onabort = () => { if (!settled) fail(upgrade.error); };
+          let write;
+          if (upgrade) upgrade.onabort = () => { if (!settled) fail(upgrade.error || write?.error); };
           try {
-            request.result.createObjectStore('probe').put('ok', 'probe');
+            write = request.result.createObjectStore('probe').put('ok', 'probe');
           } catch (error) {
-            request.transaction.abort();
+            if (upgrade) {
+              upgrade.onabort = null;
+              try { upgrade.abort(); } catch (e) {}
+            }
             fail(error);
           }
         };
@@ -357,7 +361,7 @@ const app = createApp({
             const transaction = database.transaction('probe', 'readonly');
             const read = transaction.objectStore('probe').get('probe');
             transaction.oncomplete = () => finish(read.result === 'ok');
-            transaction.onabort = () => fail(transaction.error);
+            transaction.onabort = () => fail(transaction.error || read.error);
             database.onversionchange = () => finish(restricted);
           } catch (error) { fail(error); }
         };

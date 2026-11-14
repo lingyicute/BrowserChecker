@@ -679,6 +679,41 @@ test('IndexedDB upgrade quota errors are not masked by a subsequent open AbortEr
   assert.equal(h.timers.size, 0);
 });
 
+test('IndexedDB synchronous upgrade quota error survives synchronous onabort and throwing abort', async () => {
+  for (const abortThrows of [false, true]) {
+    const h = harness();
+    const m = indexedDBMock(h);
+    m.request.result.createObjectStore = () => ({ put() { throw { name: 'QuotaExceededError' }; } });
+    m.request.transaction.abort = () => {
+      if (abortThrows) throw new Error('already aborted');
+      if (m.request.transaction.onabort) m.request.transaction.onabort();
+    };
+    const pending = h.api.testIndexedDB();
+    m.request.onupgradeneeded({ oldVersion: 0 });
+    assert.equal((await pending).skipped, true);
+    assert.equal(h.timers.size, 0);
+  }
+});
+
+test('IndexedDB collision abort exception and read.error fallback settle cleanly', async () => {
+  const h1 = harness();
+  const m1 = indexedDBMock(h1);
+  m1.request.transaction.abort = () => { throw new Error('inactive transaction'); };
+  const p1 = h1.api.testIndexedDB();
+  m1.request.onupgradeneeded({ oldVersion: 1 });
+  assert.equal((await p1).skipped, true);
+  assert.equal(h1.timers.size, 0);
+
+  const h2 = harness();
+  const m2 = indexedDBMock(h2);
+  const p2 = h2.api.testIndexedDB();
+  m2.request.onupgradeneeded({ oldVersion: 0 });
+  m2.request.onsuccess();
+  m2.read.error = { name: 'QuotaExceededError' };
+  m2.transaction.onabort();
+  assert.equal((await p2).skipped, true);
+});
+
 test('IndexedDB cleanup exceptions cannot strand the already-completed probe', async () => {
   const h = harness();
   const m = indexedDBMock(h);
