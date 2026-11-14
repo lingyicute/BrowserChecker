@@ -560,7 +560,9 @@ body {
 
 .startup-error {
   position: fixed;
-  inset: 20% 16px auto;
+  top: 20%;
+  left: 16px;
+  right: 16px;
   max-width: 640px;
   margin: 0 auto;
   padding: 24px;
@@ -568,10 +570,15 @@ body {
   border-radius: 12px;
   background: #fff;
   color: #991b1b;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
 }
 
 .startup-failed #app {
-  visibility: hidden;
+  display: none;
+}
+
+noscript:has(.startup-error) ~ #app {
+  display: none;
 }
 
 .score-unavailable {
