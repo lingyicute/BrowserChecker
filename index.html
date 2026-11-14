@@ -93,7 +93,7 @@
             <p>🔒 当前页面不在安全上下文中，依赖安全上下文的 API 已跳过。请通过 HTTPS 或 localhost 访问以获得完整结果</p>
           </div>
           <div v-if="skipNotices.length" class="skip-notices">
-            <span class="skip-notice-item" v-for="(notice, index) in skipNotices" :key="index">
+            <span class="skip-notice-item" v-for="notice in skipNotices" :key="notice.reason">
               {{ notice.reason }} × {{ notice.count }}
             </span>
           </div>
@@ -104,7 +104,7 @@
       <div v-if="!detectionError" class="block-item block-details">
         <h3 id="details-heading">详细检测结果</h3>
         <div class="detail-items-container" tabindex="0" role="region" aria-labelledby="details-heading">
-          <div class="detail-item" :class="{ 'detail-item-skipped': item.skipped }" v-for="(item, index) in detectionResults" :key="item.name" :style="{ animationDelay: `${index * 0.03}s` }">
+          <div class="detail-item" :class="{ 'detail-item-skipped': item.skipped }" v-for="(item, index) in detectionResults" :key="item.name" :style="{ animationDelay: `${Math.min(index, 12) * 0.03}s` }">
             <div class="detail-name">
               {{ item.name }}
               <span v-if="item.skipped" class="detail-reason">{{ item.reason }}</span>
