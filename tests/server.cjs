@@ -2,13 +2,13 @@
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
-const files = {
+const files = Object.assign(Object.create(null), {
   '/': ['index.html', 'text/html; charset=utf-8'],
   '/index.html': ['index.html', 'text/html; charset=utf-8'],
   '/app.js': ['app.js', 'application/javascript; charset=utf-8'],
   '/startup.js': ['startup.js', 'application/javascript; charset=utf-8'],
   '/style.css': ['style.css', 'text/css; charset=utf-8']
-};
+});
 http.createServer((req, res) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     res.setHeader('Allow', 'GET, HEAD');

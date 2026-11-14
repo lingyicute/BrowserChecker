@@ -29,6 +29,7 @@ function serverHarness(readFileSync = fs.readFileSync) {
 test('test server rejects inherited property names and non-public paths without crashing', () => {
   const request = serverHarness();
   for (const url of ['/constructor', '/__proto__', '/toString', '/hasOwnProperty',
+    'urn:constructor', 'mailto:toString', 'javascript:__proto__', 'data:hasOwnProperty',
     '/package.json', '/.git/config', '/tests/app.test.cjs', '/node_modules/vue/package.json']) {
     assert.equal(request(url).status, 404, url);
   }
