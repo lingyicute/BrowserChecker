@@ -207,7 +207,7 @@ test('storage probe preserves existing values, including colliding probe keys', 
   }
 });
 
-for (const name of ['SecurityError', 'QuotaExceededError', 'NS_ERROR_DOM_QUOTA_REACHED']) {
+for (const name of ['SecurityError', 'NotAllowedError', 'QuotaExceededError', 'NS_ERROR_DOM_QUOTA_REACHED']) {
   test(`storage ${name} is skipped rather than unsupported`, () => {
     const h = harness();
     h.context.window.sessionStorage.setItem = () => { throw { name }; };
@@ -215,6 +215,20 @@ for (const name of ['SecurityError', 'QuotaExceededError', 'NS_ERROR_DOM_QUOTA_R
     assert.equal(h.context.window.localStorage.values.size, 0);
   });
 }
+
+test('storage missing removeItem or throwing null is unsupported without writing probe keys', () => {
+  const h = harness();
+  let writes = 0;
+  h.context.window.localStorage = { getItem: () => null, setItem: () => { writes++; } };
+  assert.equal(h.api.testStorage(), false);
+  assert.equal(writes, 0);
+  h.context.window.localStorage = {
+    getItem: () => null,
+    setItem: () => { throw null; },
+    removeItem: () => {}
+  };
+  assert.equal(h.api.testStorage(), false);
+});
 
 test('blocked storage getter is skipped; absent storage is unsupported', () => {
   const h = harness();

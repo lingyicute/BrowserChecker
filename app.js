@@ -262,7 +262,7 @@ const app = createApp({
         let written = false;
         try {
           storage = window[name];
-          if (!storage || typeof storage.setItem !== 'function') return false;
+          if (!hasMethods(storage, ['getItem', 'setItem', 'removeItem'])) return false;
           // 不同标签页使用不同的键，避免相互读取/删除探测值；碰撞重试必须有界。
           const prefix = '__browserchecker_probe__' + Date.now() + '_' + Math.random().toString(36).slice(2);
           for (let attempt = 0; attempt < 8; attempt++) {
@@ -275,8 +275,8 @@ const app = createApp({
           written = true;
           if (storage.getItem(key) !== key) return false;
         } catch (error) {
-          if (error.name === 'SecurityError' || error.name === 'QuotaExceededError' ||
-              error.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
+          if (error && (error.name === 'SecurityError' || error.name === 'NotAllowedError' ||
+              error.name === 'QuotaExceededError' || error.name === 'NS_ERROR_DOM_QUOTA_REACHED')) {
             return { skipped: true, reason: '网站存储被安全策略限制或配额已用尽' };
           }
           return false;
