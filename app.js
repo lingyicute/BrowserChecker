@@ -15,6 +15,7 @@ const app = createApp({
     const recommendation = ref('');
     const switchSuggestion = ref('');
     const isLoading = ref(true);
+    const isFadingOut = ref(false);
     const detectionError = ref(false);
     const displayScore = ref(0);
     const isMobileDevice = ref(false);
@@ -759,10 +760,14 @@ const app = createApp({
     // 收尾不依赖动画事件，后台标签页和减少动态效果模式也能正常结束。
     const finishLoading = () => {
       if (window.browserCheckerStartup) window.browserCheckerStartup.complete();
-      document.querySelector('.loading-overlay')?.classList.add('fade-out');
+      isFadingOut.value = true;
+      if (prefersReducedMotion()) {
+        isLoading.value = false;
+        return;
+      }
       setTimeout(() => {
         isLoading.value = false;
-      }, prefersReducedMotion() ? 0 : 800);
+      }, 800);
     };
 
     // 页面加载后立即检测，无需人为等待一秒。
@@ -805,6 +810,7 @@ const app = createApp({
       scoreColorClass,
       scoreColorGradient,
       isLoading,
+      isFadingOut,
       detectionError,
       getSupportedFeaturesCount,
       getUnsupportedFeaturesCount,

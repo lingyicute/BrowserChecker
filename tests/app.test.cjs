@@ -380,6 +380,17 @@ test('reduced motion bypasses JavaScript score animation', () => {
   assert.equal(h.state.displayScore.value, 72);
 });
 
+test('reduced motion finishes loading synchronously without scheduling a fade timer', async () => {
+  const h = harness();
+  h.context.window.matchMedia = () => ({ matches: true });
+  const pending = h.mounted();
+  completeImages(h);
+  await pending;
+  assert.equal(h.state.isFadingOut.value, true);
+  assert.equal(h.state.isLoading.value, false);
+  assert.equal(h.timers.size, 0);
+});
+
 test('initialization failure always exits loading and does not invent a 50-point score', async () => {
   const h = harness();
   h.state.browserType.value = '国产浏览器';

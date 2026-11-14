@@ -17,7 +17,7 @@
   </p>
   <div id="app">
     <!-- 加载动画覆盖层 -->
-    <div class="loading-overlay" v-if="isLoading" role="status" aria-live="polite">
+    <div class="loading-overlay" v-if="isLoading" :class="{ 'fade-out': isFadingOut }" role="status" aria-live="polite">
       <div class="loading-content">
         <div class="loader"></div>
         <div class="loading-text">正在检测浏览器特性...</div>
