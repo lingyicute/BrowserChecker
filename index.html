@@ -32,7 +32,7 @@
             <div class="score" :class="scoreColorClass">{{ detectionError ? '—' : displayScore }}</div>
             <div class="score-text">{{ detectionError ? '检测失败' : '浏览器得分' }}</div>
           </div>
-          <div class="animation-container">
+          <div class="animation-container" aria-hidden="true">
             <div class="circle-loader" :style="{ background: scoreColorGradient }"></div>
           </div>
         </div>
