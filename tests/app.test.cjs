@@ -665,6 +665,27 @@ test('normal animation completion clears its fallback timer and visibility liste
   assert.equal(h.listeners.get('visibilitychange')?.size, 0);
 });
 
+test('zero score skips animation scheduling and non-finite timestamps finalize safely', () => {
+  const h1 = harness();
+  let calls = 0;
+  h1.context.window.requestAnimationFrame = () => { calls++; };
+  h1.state.totalScore.value = 0;
+  h1.api.animateScore();
+  assert.equal(h1.state.displayScore.value, 0);
+  assert.equal(calls, 0);
+  assert.equal(h1.timers.size, 0);
+
+  const h2 = harness();
+  let next;
+  h2.context.window.requestAnimationFrame = callback => { next = callback; return 1; };
+  h2.state.totalScore.value = 88;
+  h2.api.animateScore();
+  next(Number.NaN);
+  assert.equal(h2.state.displayScore.value, 88);
+  assert.equal(h2.timers.size, 0);
+  assert.equal(h2.listeners.get('visibilitychange')?.size, 0);
+});
+
 test('IndexedDB upgrade quota errors are not masked by a subsequent open AbortError', async () => {
   const h = harness();
   const m = indexedDBMock(h);

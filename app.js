@@ -93,7 +93,8 @@ const app = createApp({
 
     const animateScore = () => {
       const targetScore = totalScore.value;
-      if (typeof window.requestAnimationFrame !== 'function' || prefersReducedMotion() ||
+      if (!Number.isFinite(targetScore) || targetScore <= 0 ||
+          typeof window.requestAnimationFrame !== 'function' || prefersReducedMotion() ||
           document.hidden) {
         displayScore.value = targetScore;
         return;
@@ -108,14 +109,20 @@ const app = createApp({
         settled = true;
         displayScore.value = targetScore;
         clearTimeout(timer);
-        document.removeEventListener('visibilitychange', onVisibilityChange);
+        try { document.removeEventListener('visibilitychange', onVisibilityChange); } catch (e) {}
         try {
-          if (typeof window.cancelAnimationFrame === 'function') window.cancelAnimationFrame(frame);
+          if (frame !== undefined && typeof window.cancelAnimationFrame === 'function') {
+            window.cancelAnimationFrame(frame);
+          }
         } catch (e) { /* 已排队的回调也会检查 settled，不再覆盖最终分数。 */ }
       };
       const onVisibilityChange = () => { if (document.hidden) finish(); };
       const updateScore = (timestamp) => {
         if (settled) return;
+        if (!Number.isFinite(timestamp)) {
+          finish();
+          return;
+        }
         // 使用 rAF 的单调时间戳，避免系统时间回拨导致负分或动画迟迟不结束。
         if (startTime === undefined) startTime = timestamp;
         const progress = Math.max(0, Math.min(1, (timestamp - startTime) / duration));
