@@ -217,7 +217,11 @@ const app = createApp({
 
     // 图片解码检测：超时 / CSP 拦截属于无法评估，不应当作为格式不支持扣分。
     const testImageDecode = (dataUri) => new Promise((resolve) => {
-      const img = new Image();
+      if (typeof Image !== 'function') {
+        resolve(false);
+        return;
+      }
+      let img;
       let settled = false;
       let errorTimer;
       const finish = (result) => {
@@ -225,15 +229,17 @@ const app = createApp({
         settled = true;
         clearTimeout(timer);
         clearTimeout(errorTimer);
-        img.onload = img.onerror = null;
-        // 清理属于尽力而为；不能在 settled 后抛错，导致 Promise 永远无法完成。
+        if (img) {
+          img.onload = img.onerror = null;
+          // 清理属于尽力而为；不能在 settled 后抛错，导致 Promise 永远无法完成。
+          try { img.removeAttribute('src'); } catch (e) {}
+        }
         try { document.removeEventListener('securitypolicyviolation', onPolicyViolation); } catch (e) {}
-        try { img.removeAttribute('src'); } catch (e) {}
         resolve(result);
       };
       const onPolicyViolation = (event) => {
         if (event.disposition === 'enforce' && event.effectiveDirective === 'img-src' &&
-            (event.blockedURI === 'data' || event.blockedURI === dataUri)) {
+            (event.blockedURI === 'data' || event.blockedURI === 'data:' || event.blockedURI === dataUri)) {
           finish({ skipped: true, reason: '图片解码样本被内容安全策略（CSP）阻止' });
         }
       };
@@ -241,6 +247,7 @@ const app = createApp({
         skipped: true, reason: '图片解码超时，无法评估当前格式支持情况'
       }), 2000);
       try {
+        img = new Image();
         document.addEventListener('securitypolicyviolation', onPolicyViolation);
         img.onload = () => finish(img.naturalWidth > 0 && img.naturalHeight > 0);
         // 给异步 CSP 事件留出时间；普通解码失败仍然标记为不支持。
@@ -384,9 +391,13 @@ const app = createApp({
     const hasMethods = (object, methods) => !!object &&
       methods.every(method => typeof object[method] === 'function');
 
+    const supportsCSS = (...args) => hasMethods(window.CSS, ['supports']) &&
+      !!window.CSS.supports(...args);
+
     // 检测现代Web功能
     // 每个检测项可选字段：
-    //   policy            - 对应 Permissions Policy；页面明确禁用时跳过
+    //   policy            - 对应 Permissions Policy（单条或数组）；任一策略明确禁用时跳过
+    //   policiesAll       - 对应多条 Permissions Policy；全部明确禁用时跳过
     //   secure            - 需要安全上下文（HTTPS），非 HTTPS 下跳过
     //   desktopOnly       - 当前确实仅桌面端提供，移动端跳过
     //   skipOnIOS         - 常见 iOS WebKit 环境不提供，跳过
@@ -421,22 +432,24 @@ const app = createApp({
         }},
         { name: 'Intersection Observer', test: () => typeof window.IntersectionObserver === 'function' },
         { name: 'Web Animation API', test: () => typeof HTMLElement.prototype.animate === 'function' },
-        { name: 'CSS Grid', test: () => !!(window.CSS && CSS.supports('display', 'grid')) },
-        { name: 'CSS Variables', test: () => !!(window.CSS && CSS.supports('--a', '0')) },
+        { name: 'CSS Grid', test: () => supportsCSS('display', 'grid') },
+        { name: 'CSS Variables', test: () => supportsCSS('--a', '0') },
         { name: 'WebGL 2.0', test: () => {
           // 若连 WebGL 1.0 都不可用，说明是 GPU 加速被禁用/远程桌面等环境问题，而非浏览器过时
-          const canvas = document.createElement('canvas');
-          let gl2 = null;
-          let gl1 = null;
-          try { gl2 = canvas.getContext('webgl2'); } catch (e) { gl2 = null; }
+          const tryContext = (type) => {
+            try {
+              const canvas = document.createElement('canvas');
+              return typeof canvas.getContext === 'function' ? canvas.getContext(type) : null;
+            } catch (e) {
+              return null;
+            }
+          };
+          const gl2 = tryContext('webgl2');
           if (gl2) {
             releaseWebGLContext(gl2);
             return true;
           }
-          try {
-            gl1 = document.createElement('canvas').getContext('webgl') ||
-                  document.createElement('canvas').getContext('experimental-webgl');
-          } catch (e) { gl1 = null; }
+          const gl1 = tryContext('webgl') || tryContext('experimental-webgl');
           if (!gl1) {
             return { skipped: true, reason: '当前环境无法创建 WebGL 上下文，无法评估' };
           }
@@ -462,20 +475,21 @@ const app = createApp({
             ? 'iOS 普通标签页不支持，请添加到主屏幕后再检测'
             : null,
           test: () => typeof window.Notification === 'function' },
-        { name: 'Screen Orientation API', test: () => !!(screen.orientation &&
-          typeof screen.orientation.type === 'string' && typeof screen.orientation.angle === 'number') },
+        { name: 'Screen Orientation API', test: () => typeof screen !== 'undefined' && !!(screen &&
+          screen.orientation && typeof screen.orientation.type === 'string' &&
+          screen.orientation.type.length > 0 && Number.isFinite(screen.orientation.angle)) },
         { name: 'Gamepad API', policy: 'gamepad', secure: true, test: () => typeof navigator.getGamepads === 'function' },
         { name: 'Web Components', test: () => hasMethods(window.customElements, ['define', 'get']) },
         { name: '支持视频格式 WebM', test: () => {
           const video = document.createElement('video');
-          if (!video.canPlayType) return false;
+          if (typeof video.canPlayType !== 'function') return false;
           return !!(video.canPlayType('video/webm; codecs="vp8, vorbis"') ||
                     video.canPlayType('video/webm; codecs="vp9, opus"') ||
                     video.canPlayType('video/webm'));
         }},
         { name: '支持音频格式 AAC', test: () => {
           const audio = document.createElement('audio');
-          if (!audio.canPlayType) return false;
+          if (typeof audio.canPlayType !== 'function') return false;
           return !!(audio.canPlayType('audio/aac') ||
                     audio.canPlayType('audio/mp4; codecs="mp4a.40.2"') ||
                     audio.canPlayType('audio/x-m4a'));
@@ -491,19 +505,19 @@ const app = createApp({
         { name: 'Performance API', test: () => hasMethods(window.performance, ['now']) },
         // 图片格式：改为真实解码测试
         // 原先的 canvas.toDataURL 只能检测“编码”能力
-        // Chrome 至今不支持编码 AVIF、Safari 也长期不支持编码 WebP，导致假阳性
+        // Chrome 至今不支持编码 AVIF、Safari 也长期不支持编码 WebP，导致假阴性
         { name: '支持图像格式 WebP', test: () => testImageDecode(WEBP_SAMPLE) },
         { name: '支持图像格式 AVIF', test: () => testImageDecode(AVIF_SAMPLE) },
-        { name: 'URL.createObjectURL', test: () => typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function' },
+        { name: 'URL.createObjectURL', test: () => typeof URL !== 'undefined' && hasMethods(URL, ['createObjectURL']) },
         { name: 'Web Locks API', secure: true, test: () => hasMethods(navigator.locks, ['request']) },
         // 新版 Chromium Android 已逐步提供文件选择器；这里使用能力检测，
         // 不再把整个 File System Access API 一刀切为桌面专属。
         { name: 'File System Access API', secure: true, test: () => typeof window.showOpenFilePicker === 'function' },
-        { name: 'CSS :has() 选择器', test: () => !!(window.CSS && CSS.supports('selector(:has(*))')) },
-        { name: 'CSS 容器查询', test: () => !!(window.CSS && CSS.supports('container-type: inline-size')) },
-        { name: 'CSS 嵌套规则', test: () => !!(window.CSS && CSS.supports('selector(&)')) },
-        { name: 'CSS aspect-ratio', test: () => !!(window.CSS && CSS.supports('aspect-ratio: 1/1')) },
-        { name: 'CSS color-mix()', test: () => !!(window.CSS && CSS.supports('color: color-mix(in srgb, red, blue)')) },
+        { name: 'CSS :has() 选择器', test: () => supportsCSS('selector(:has(*))') },
+        { name: 'CSS 容器查询', test: () => supportsCSS('container-type: inline-size') },
+        { name: 'CSS 嵌套规则', test: () => supportsCSS('selector(&)') },
+        { name: 'CSS aspect-ratio', test: () => supportsCSS('aspect-ratio: 1/1') },
+        { name: 'CSS color-mix()', test: () => supportsCSS('color: color-mix(in srgb, red, blue)') },
         { name: 'WebGPU API', secure: true, test: () => hasMethods(navigator.gpu, ['requestAdapter']) },
         { name: 'WebTransport API', secure: true, test: () => typeof window.WebTransport === 'function' },
         { name: 'Compression Streams API', test: () => typeof window.CompressionStream === 'function' },
@@ -517,20 +531,22 @@ const app = createApp({
         { name: 'MediaSession API', test: () => hasMethods(navigator.mediaSession, ['setActionHandler']) },
         { name: 'Credential Management API', secure: true, test: () => hasMethods(navigator.credentials, ['get', 'create']) },
         // --- 针对 Chromium 120-150 新增的新特性检测 ---
-        { name: 'Popover API', test: () => 'popover' in HTMLElement.prototype },
+        { name: 'Popover API', test: () => 'popover' in HTMLElement.prototype &&
+          hasMethods(HTMLElement.prototype, ['showPopover', 'hidePopover', 'togglePopover']) },
         { name: 'View Transitions API', test: () => typeof document.startViewTransition === 'function' },
-        { name: 'CSS light-dark()', test: () => !!(window.CSS && CSS.supports('color: light-dark(white, black)')) },
-        { name: 'Speculation Rules API', skipOnIOS: true, test: () => !!(HTMLScriptElement.supports && HTMLScriptElement.supports('speculationrules')) },
+        { name: 'CSS light-dark()', test: () => supportsCSS('color: light-dark(white, black)') },
+        { name: 'Speculation Rules API', skipOnIOS: true, test: () => typeof HTMLScriptElement !== 'undefined' &&
+          hasMethods(HTMLScriptElement, ['supports']) && !!HTMLScriptElement.supports('speculationrules') },
         // Baseline 2026 / ECMAScript 2026 新增能力：仅探测稳定、无需权限的接口，不执行导航或设备操作。
         { name: 'Navigation API', test: () => hasMethods(window.navigation, ['navigate', 'entries']) },
         { name: 'Math.sumPrecise()', test: () => typeof Math.sumPrecise === 'function' &&
           Math.sumPrecise([1e20, 0.1, -1e20]) === 0.1 },
         { name: 'Iterator.concat()', test: () => typeof Iterator === 'function' &&
           typeof Iterator.concat === 'function' },
-        { name: 'Intl.Locale 信息 API', test: () => typeof Intl === 'object' &&
-          typeof Intl.Locale === 'function' && typeof Intl.Locale.prototype.getWeekInfo === 'function' },
-        { name: 'CSS field-sizing', test: () => !!(window.CSS && CSS.supports('field-sizing: content')) },
-        { name: 'CSS :open 选择器', test: () => !!(window.CSS && CSS.supports('selector(:open)')) }
+        { name: 'Intl.Locale 信息 API', test: () => typeof Intl === 'object' && !!Intl &&
+          typeof Intl.Locale === 'function' && hasMethods(Intl.Locale.prototype, ['getWeekInfo']) },
+        { name: 'CSS field-sizing', test: () => supportsCSS('field-sizing: content') },
+        { name: 'CSS :open 选择器', test: () => supportsCSS('selector(:open)') }
       ];
 
       // 检测每项功能并记录结果（支持异步检测）

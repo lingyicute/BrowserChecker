@@ -746,6 +746,61 @@ test('a throwing image source setter cleans up the probe instead of leaking its 
   assert.equal(h.listeners.get('securitypolicyviolation').size, 0);
 });
 
+test('image probe handles data: CSP blockedURI, missing Image and throwing constructor', async () => {
+  const h1 = harness();
+  const p1 = h1.api.testImageDecode('data:image/webp;base64,test');
+  for (const fn of h1.listeners.get('securitypolicyviolation')) {
+    fn({ effectiveDirective: 'img-src', blockedURI: 'data:', disposition: 'enforce' });
+  }
+  assert.equal((await p1).skipped, true);
+  assert.equal(h1.timers.size, 0);
+
+  const h2 = harness();
+  h2.context.Image = undefined;
+  assert.equal(await h2.api.testImageDecode('data:image/webp;base64,test'), false);
+
+  const h3 = harness();
+  h3.context.Image = function BlockedImage() { throw new Error('blocked'); };
+  assert.equal((await h3.api.testImageDecode('data:image/webp;base64,test')).skipped, true);
+  assert.equal(h3.timers.size, 0);
+});
+
+test('WebGL fallback tries experimental-webgl even if webgl getContext throws', async () => {
+  const h = harness();
+  let released = 0;
+  h.context.document.createElement = () => ({
+    getContext(name) {
+      if (name === 'webgl') throw new Error('webgl failed');
+      if (name === 'experimental-webgl') return { getExtension: () => ({ loseContext: () => { released++; } }) };
+      return null;
+    }
+  });
+  const find = await detect(h);
+  assert.equal(find('WebGL 2.0').supported, false);
+  assert.equal(find('WebGL 2.0').skipped, false);
+  assert.equal(released, 1);
+});
+
+test('Popover, CSS, Intl, URL, Speculation Rules and Screen Orientation reject invalid placeholders', async () => {
+  const h = harness();
+  h.context.HTMLElement.prototype.popover = undefined;
+  h.context.window.CSS = { supports: {} };
+  h.context.Intl = null;
+  h.context.URL = null;
+  h.context.HTMLScriptElement.supports = {};
+  h.context.screen = { orientation: { type: '', angle: Number.NaN } };
+  const find = await detect(h);
+  for (const name of ['Popover API', 'CSS Grid', 'Intl.Locale 信息 API',
+    'URL.createObjectURL', 'Speculation Rules API', 'Screen Orientation API']) {
+    assert.equal(find(name).supported, false, name);
+    assert.equal(find(name).skipped, false, name);
+  }
+  const noop = () => {};
+  Object.assign(h.context.HTMLElement.prototype, { showPopover: noop, hidePopover: noop, togglePopover: noop });
+  const find2 = await detect(h);
+  assert.equal(find2('Popover API').supported, true);
+});
+
 test('non-callable API placeholders are not reported as usable capabilities', async () => {
   const h = harness();
   Object.assign(h.context.navigator, { share: undefined, getGamepads: null, requestMIDIAccess: {}, clipboard: null });
