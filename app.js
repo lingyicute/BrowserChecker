@@ -187,13 +187,20 @@ const app = createApp({
       }
       // 只信任浏览器明确认识且明确禁止的策略名称，未知策略不能当作“不支持”。
       // 不查询/申请用户权限，也不改变 API 正常可检测时的评分。
-      if (feature.policy) {
+      if (feature.policy || feature.policiesAll) {
         try {
           const policy = document.permissionsPolicy || document.featurePolicy;
           if (policy && typeof policy.features === 'function' &&
-              typeof policy.allowsFeature === 'function' &&
-              policy.features().includes(feature.policy) && !policy.allowsFeature(feature.policy)) {
-            return '被页面权限策略（Permissions Policy）禁用';
+              typeof policy.allowsFeature === 'function') {
+            const known = policy.features();
+            const isDenied = (name) => known.includes(name) && !policy.allowsFeature(name);
+            const anyPolicies = feature.policy
+              ? (Array.isArray(feature.policy) ? feature.policy : [feature.policy])
+              : [];
+            if (anyPolicies.some(isDenied) ||
+                (feature.policiesAll && feature.policiesAll.length > 0 && feature.policiesAll.every(isDenied))) {
+              return '被页面权限策略（Permissions Policy）禁用';
+            }
           }
         } catch (e) { /* 不支持策略 introspection 的浏览器仍执行原能力检测。 */ }
       }
@@ -441,7 +448,7 @@ const app = createApp({
         { name: 'WebXR Device API', policy: 'xr-spatial-tracking', secure: true, skipOnIOS: true, test: () => hasMethods(navigator.xr, ['requestSession']) },
         { name: 'WebUSB', policy: 'usb', secure: true, skipOnIOS: true, test: () => hasMethods(navigator.usb, ['requestDevice']) },
         { name: 'Web Bluetooth', policy: 'bluetooth', secure: true, skipOnIOS: true, test: () => hasMethods(navigator.bluetooth, ['requestDevice']) },
-        { name: 'WebAuthn', secure: true, test: () => hasMethods(navigator.credentials, ['get', 'create']) && typeof window.PublicKeyCredential === 'function' },
+        { name: 'WebAuthn', policy: ['publickey-credentials-get', 'publickey-credentials-create'], secure: true, test: () => hasMethods(navigator.credentials, ['get', 'create']) && typeof window.PublicKeyCredential === 'function' },
         { name: 'Geolocation API', policy: 'geolocation', secure: true, test: () => hasMethods(navigator.geolocation, ['getCurrentPosition']) },
         { name: 'IndexedDB', test: testIndexedDB },
         { name: 'Web Notifications', secure: true,
@@ -471,7 +478,7 @@ const app = createApp({
         }},
         { name: 'requestAnimationFrame', test: () => typeof window.requestAnimationFrame === 'function' },
         { name: 'Storage API', test: testStorage },
-        { name: 'Clipboard API', secure: true, test: () => {
+        { name: 'Clipboard API', policiesAll: ['clipboard-read', 'clipboard-write'], secure: true, test: () => {
           const clipboard = navigator.clipboard;
           return !!clipboard && ['read', 'readText', 'write', 'writeText']
             .some(method => typeof clipboard[method] === 'function');

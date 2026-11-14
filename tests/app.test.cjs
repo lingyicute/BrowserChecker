@@ -429,16 +429,28 @@ test('hidden pages immediately get the final score without scheduling animation'
 test('explicit Permissions Policy denial skips features without deducting points', async () => {
   const h = harness();
   const names = ['geolocation', 'gamepad', 'usb', 'bluetooth', 'payment', 'web-share',
-    'idle-detection', 'midi', 'screen-wake-lock', 'xr-spatial-tracking'];
+    'idle-detection', 'midi', 'screen-wake-lock', 'xr-spatial-tracking',
+    'publickey-credentials-get', 'clipboard-read', 'clipboard-write'];
   h.context.document.featurePolicy = { features: () => names, allowsFeature: () => false };
   const find = await detect(h);
   for (const name of ['Geolocation API', 'Gamepad API', 'WebUSB', 'Web Bluetooth',
     'Payment Request API', 'Web Share API', 'Idle Detection API', 'Web MIDI API', 'Screen Wake Lock API',
-    'WebXR Device API']) {
+    'WebXR Device API', 'WebAuthn', 'Clipboard API']) {
     assert.equal(find(name).skipped, true, name);
     assert.match(find(name).reason, /Permissions Policy/);
   }
   assert.equal(h.state.totalScore.value, 100 - h.state.getUnsupportedFeaturesCount() * 2);
+});
+
+test('WebAuthn skips on create-policy denial and Clipboard only skips when both read and write are denied', async () => {
+  const h = harness();
+  h.context.document.permissionsPolicy = {
+    features: () => ['publickey-credentials-create', 'clipboard-read', 'clipboard-write'],
+    allowsFeature: name => name === 'clipboard-write'
+  };
+  const find = await detect(h);
+  assert.equal(find('WebAuthn').skipped, true);
+  assert.equal(find('Clipboard API').skipped, false);
 });
 
 test('unknown, allowed, missing or broken policy introspection does not bypass detection', () => {
