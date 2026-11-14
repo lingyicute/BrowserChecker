@@ -11,10 +11,24 @@
     if (document.body) document.body.classList.add('startup-failed');
   }
 
+  // 离线使用时依赖文件可能被改名（README 允许“自行保存依赖并调整引用”），
+  // 因此除默认文件名外，还要匹配启动脚本标签的实际 src。
+  function isStartupScriptUrl(url) {
+    if (!url) return false;
+    if (/(?:^|\/)(app|vue\.global\.prod)\.js(?:[?#]|$)/.test(url)) return true;
+    var ids = ['vue-script', 'app-script'];
+    for (var i = 0; i < ids.length; i++) {
+      var script = document.getElementById(ids[i]);
+      if (script && script.src && script.src === url) return true;
+    }
+    return false;
+  }
+
   function onError(event) {
+    if (!event) return;
     var target = event.target;
     if ((target && (target.id === 'vue-script' || target.id === 'app-script')) ||
-        (event.filename && /(?:^|\/)(app|vue\.global\.prod)\.js(?:[?#]|$)/.test(event.filename))) {
+        isStartupScriptUrl(event.filename)) {
       fail();
     }
   }

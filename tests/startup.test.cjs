@@ -5,7 +5,7 @@ const vm = require('node:vm');
 
 const source = fs.readFileSync('startup.js', 'utf8');
 
-function startupHarness({ withDom = true } = {}) {
+function startupHarness({ withDom = true, scripts = {} } = {}) {
   const errorEl = { hidden: true };
   const classes = new Set();
   const winListeners = new Map();
@@ -25,7 +25,7 @@ function startupHarness({ withDom = true } = {}) {
   };
   const document = {
     body: withDom ? { classList: { add: c => classes.add(c), remove: c => classes.delete(c) } } : null,
-    getElementById: id => (withDom && id === 'startup-error' ? errorEl : null),
+    getElementById: id => (withDom && id === 'startup-error' ? errorEl : (withDom && scripts[id]) || null),
     addEventListener: add(docListeners),
     removeEventListener: remove(docListeners)
   };
@@ -90,4 +90,30 @@ test('startup completion clears errors, timers, listeners and handles missing DO
   const missingDom = startupHarness({ withDom: false });
   assert.doesNotThrow(() => missingDom.emitWindowError({ target: { id: 'app-script' } }));
   assert.doesNotThrow(() => missingDom.complete());
+});
+
+test('startup guard recognises renamed offline dependencies by the script tag src', () => {
+  const scripts = {
+    'vue-script': { id: 'vue-script', src: 'file:///opt/offline/vue-local.js' },
+    'app-script': { id: 'app-script', src: 'file:///opt/offline/checker-main.js' }
+  };
+  for (const filename of ['file:///opt/offline/vue-local.js', 'file:///opt/offline/checker-main.js']) {
+    const h = startupHarness({ scripts });
+    h.emitWindowError({ filename });
+    assert.equal(h.errorEl.hidden, false);
+    assert.equal(h.classes.has('startup-failed'), true);
+    assert.equal(h.timers.size, 0);
+  }
+
+  // 无关扩展脚本、空文件名、空 src 与畸形事件都不能误报启动失败。
+  const h = startupHarness({ scripts: { ...scripts, 'app-script': { id: 'app-script', src: '' } } });
+  for (const event of [
+    { filename: 'chrome-extension://abc/content.js' },
+    { filename: '' },
+    { filename: undefined },
+    {},
+    undefined
+  ]) assert.doesNotThrow(() => h.emitWindowError(event));
+  assert.equal(h.errorEl.hidden, true);
+  assert.equal(h.classes.has('startup-failed'), false);
 });
