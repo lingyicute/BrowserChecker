@@ -6,9 +6,9 @@ const vm = require('node:vm');
 
 function serverHarness(readFileSync = fs.readFileSync) {
   let handler;
-  vm.runInNewContext(fs.readFileSync('tests/server.cjs', 'utf8'), {
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, 'server.cjs'), 'utf8'), {
     URL,
-    __dirname: path.resolve('tests'),
+    __dirname,
     require(name) {
       if (name === 'node:http') return { createServer(fn) { handler = fn; return { listen() {} }; } };
       if (name === 'node:fs') return { readFileSync };

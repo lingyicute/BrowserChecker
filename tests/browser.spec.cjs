@@ -1,13 +1,15 @@
 const { test, expect } = require('@playwright/test');
 const path = require('node:path');
 const fs = require('node:fs');
+const { pathToFileURL } = require('node:url');
+const rootDir = path.join(__dirname, '..');
 const vueURL = 'https://cdn.jsdelivr.net/npm/vue@3.5.44/dist/vue.global.prod.js';
 const feature = (page, name) => page.locator('.detail-item').filter({ has: page.locator('.detail-name', { hasText: name }) });
 
 // Playwright 自带的 Chromium 版本落后于应用的 Stable 基线，会触发版本扣分，
 // 使“100 - 不支持数 * 2”的分数断言随浏览器版本漂移。这里把 Chromium 的 UA 主版本
 // 固定为应用当前基线，让测试只验证功能扣分；其他引擎不受影响。
-const latestChromium = Number(/latestChromiumVersion\s*=\s*(\d+)/.exec(fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8'))[1]);
+const latestChromium = Number(/latestChromiumVersion\s*=\s*(\d+)/.exec(fs.readFileSync(path.join(rootDir, 'app.js'), 'utf8'))[1]);
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(version => {
@@ -135,7 +137,7 @@ test('reduced motion shows results without hiding content or leaving animated lo
 });
 
 test('direct file access still works and skips origin-dependent APIs', async ({ page }) => {
-  await ready(page, `file://${path.resolve('index.html')}`);
+  await ready(page, pathToFileURL(path.join(rootDir, 'index.html')).href);
   await expect(page.locator('.notice-local-file')).toBeVisible();
   await expect(feature(page, 'Service Worker').locator('.detail-status')).toHaveText('已跳过');
 });
@@ -166,7 +168,7 @@ test('an empty application script is caught by the startup timeout', async ({ pa
 
 test('a late successful startup clears a previous timeout message', async ({ page }) => {
   await page.clock.install();
-  const appSource = fs.readFileSync('app.js', 'utf8');
+  const appSource = fs.readFileSync(path.join(rootDir, 'app.js'), 'utf8');
   await page.route('**/app.js', route => route.fulfill({ body: '', contentType: 'application/javascript' }));
   await page.goto('/');
   await page.clock.fastForward(16000);
@@ -179,12 +181,14 @@ test('a late successful startup clears a previous timeout message', async ({ pag
 });
 
 test('real insecure HTTP origin skips APIs requiring a secure context', async ({ page }) => {
-  const files = { '/': 'index.html', '/style.css': 'style.css', '/startup.js': 'startup.js', '/app.js': 'app.js' };
+  const files = Object.assign(Object.create(null), {
+    '/': 'index.html', '/style.css': 'style.css', '/startup.js': 'startup.js', '/app.js': 'app.js'
+  });
   await page.route('http://browserchecker.test/**', route => {
     const pathname = new URL(route.request().url()).pathname;
     const file = files[pathname];
     if (!file) return route.fulfill({ status: 404, body: '' });
-    return route.fulfill({ path: path.resolve(file), contentType: file.endsWith('.js') ? 'application/javascript' : (file.endsWith('.css') ? 'text/css' : 'text/html') });
+    return route.fulfill({ path: path.join(rootDir, file), contentType: file.endsWith('.js') ? 'application/javascript' : (file.endsWith('.css') ? 'text/css' : 'text/html') });
   });
   await ready(page, 'http://browserchecker.test/');
   expect(await page.evaluate(() => window.isSecureContext)).toBe(false);

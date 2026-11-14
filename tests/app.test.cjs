@@ -1,9 +1,11 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const path = require('node:path');
 const vm = require('node:vm');
 const { createHash } = require('node:crypto');
-const source = fs.readFileSync('app.js', 'utf8');
+const rootDir = path.join(__dirname, '..');
+const source = fs.readFileSync(path.join(rootDir, 'app.js'), 'utf8');
 
 function storage() {
   const values = new Map();
@@ -94,7 +96,7 @@ test('browser policy and warning template remain stable', () => {
   const policy = source.slice(source.indexOf('    // 检测浏览器类型和版本'), source.indexOf('    // 收尾'))
     .replace('/firefox|fxios/i.test(ua)', '/firefox/i.test(ua)');
   assert.equal(hash(policy), lock.policySha256);
-  const html = fs.readFileSync('index.html', 'utf8');
+  const html = fs.readFileSync(path.join(rootDir, 'index.html'), 'utf8');
   const warning = html.slice(html.indexOf('      <!-- 国产/套壳浏览器警告块 -->'), html.indexOf('      <!-- 内核版本及建议块 -->'));
   assert.equal(hash(warning), lock.warningSha256);
 });
