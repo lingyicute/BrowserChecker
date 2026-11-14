@@ -52,12 +52,12 @@
       <div class="block-item block-engine">
         <h3>浏览器内核信息</h3>
         <div class="browser-info">
-          <p><strong>浏览器类型：</strong>{{ browserType }}</p>
-          <p v-if="isChromeEngine"><strong>Chromium 内核版本：</strong>{{ chromeVersion }}</p>
+          <p v-if="!detectionError"><strong>浏览器类型：</strong>{{ browserType }}</p>
+          <p v-if="!detectionError && isChromeEngine"><strong>Chromium 内核版本：</strong>{{ chromeVersion }}</p>
           <div class="engine-recommendation">
             <p>{{ recommendation }}</p>
           </div>
-          <p class="user-agent"><strong>浏览器 User-Agent：</strong>{{ userAgent }}</p>
+          <p v-if="!detectionError" class="user-agent"><strong>浏览器 User-Agent：</strong>{{ userAgent }}</p>
         </div>
       </div>
 

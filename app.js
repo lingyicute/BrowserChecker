@@ -780,6 +780,11 @@ const app = createApp({
         detectionError.value = true;
         // 检测失败不是 50 分；不展示不完整的统计或误导性的评分。
         displayScore.value = totalScore.value = null;
+        browserType.value = '';
+        isChromeEngine.value = false;
+        chromeVersion.value = 0;
+        switchSuggestion.value = '';
+        userAgent.value = '';
         detectionResults.value = [];
         skipNotices.value = [];
         recommendation.value = '检测过程中发生错误，请刷新页面重试。';

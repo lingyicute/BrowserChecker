@@ -382,6 +382,11 @@ test('reduced motion bypasses JavaScript score animation', () => {
 
 test('initialization failure always exits loading and does not invent a 50-point score', async () => {
   const h = harness();
+  h.state.browserType.value = '国产浏览器';
+  h.state.isChromeEngine.value = true;
+  h.state.chromeVersion.value = 109;
+  h.state.switchSuggestion.value = 'stale';
+  h.state.userAgent.value = 'stale';
   Object.defineProperty(h.context.navigator, 'userAgent', { get() { throw new Error('environment failure'); } });
   await h.mounted();
   h.runTimers(800);
@@ -389,6 +394,11 @@ test('initialization failure always exits loading and does not invent a 50-point
   assert.equal(h.state.detectionError.value, true);
   assert.equal(h.state.totalScore.value, null);
   assert.equal(h.state.displayScore.value, null);
+  assert.equal(h.state.browserType.value, '');
+  assert.equal(h.state.isChromeEngine.value, false);
+  assert.equal(h.state.chromeVersion.value, 0);
+  assert.equal(h.state.switchSuggestion.value, '');
+  assert.equal(h.state.userAgent.value, '');
   assert.equal(h.state.detectionResults.value.length, 0);
 });
 
