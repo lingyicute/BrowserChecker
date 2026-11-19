@@ -12,7 +12,10 @@ window.browserCheckerRender = (function () {
             "aria-live": "polite"
           }, [
             _createElementVNode("div", { class: "loading-content" }, [
-              _createElementVNode("div", { class: "loader" }),
+              _createElementVNode("div", {
+                class: "loader",
+                "aria-hidden": "true"
+              }),
               _createElementVNode("div", { class: "loading-text" }, "正在检测浏览器特性...")
             ])
           ], 2 /* CLASS */))
@@ -22,13 +25,14 @@ window.browserCheckerRender = (function () {
             key: 1,
             class: "container content-loaded"
           }, [
+            _createElementVNode("h1", { class: "visually-hidden" }, "浏览器检查"),
             _createElementVNode("div", { class: "score-wrapper" }, [
               _createElementVNode("div", { class: "score-section block-item block-score" }, [
                 _createElementVNode("div", { class: "score-container" }, [
                   _createElementVNode("div", {
                     class: _normalizeClass(["score", _ctx.scoreColorClass])
                   }, _toDisplayString(_ctx.detectionError ? '—' : _ctx.displayScore), 3 /* TEXT, CLASS */),
-                  _createElementVNode("div", { class: "score-text" }, _toDisplayString(_ctx.detectionError ? '检测失败' : '浏览器得分'), 1 /* TEXT */)
+                  _createElementVNode("h2", { class: "score-text" }, _toDisplayString(_ctx.detectionError ? '检测失败' : '浏览器得分'), 1 /* TEXT */)
                 ]),
                 _createElementVNode("div", {
                   class: "animation-container",
@@ -54,7 +58,7 @@ window.browserCheckerRender = (function () {
                 ]))
               : _createCommentVNode("v-if", true),
             _createElementVNode("div", { class: "block-item block-engine" }, [
-              _createElementVNode("h3", null, "浏览器内核信息"),
+              _createElementVNode("h2", null, "浏览器内核信息"),
               _createElementVNode("div", { class: "browser-info" }, [
                 (!_ctx.detectionError)
                   ? (_openBlock(), _createElementBlock("p", { key: 0 }, [
@@ -87,7 +91,7 @@ window.browserCheckerRender = (function () {
                   key: 1,
                   class: "block-item block-features"
                 }, [
-                  _createElementVNode("h3", null, "现代 Web 特性支持情况"),
+                  _createElementVNode("h2", null, "现代 Web 特性支持情况"),
                   _createElementVNode("div", { class: "features-summary" }, [
                     _createElementVNode("div", { class: "feature-stats" }, [
                       _createElementVNode("div", { class: "stat-item" }, [
@@ -99,7 +103,7 @@ window.browserCheckerRender = (function () {
                         _createElementVNode("div", { class: "stat-label" }, "不支持特性")
                       ]),
                       _createElementVNode("div", { class: "stat-item" }, [
-                        _createElementVNode("div", { class: "stat-value" }, _toDisplayString(_ctx.getSupportRate()) + "%", 1 /* TEXT */),
+                        _createElementVNode("div", { class: "stat-value" }, _toDisplayString(_ctx.getSupportRate() === null ? '—' : _ctx.getSupportRate() + '%'), 1 /* TEXT */),
                         _createElementVNode("div", { class: "stat-label" }, "支持率")
                       ]),
                       (_ctx.getSkippedFeaturesCount() > 0)
@@ -157,7 +161,7 @@ window.browserCheckerRender = (function () {
                   key: 2,
                   class: "block-item block-details"
                 }, [
-                  _createElementVNode("h3", { id: "details-heading" }, "详细检测结果"),
+                  _createElementVNode("h2", { id: "details-heading" }, "详细检测结果"),
                   _createElementVNode("div", {
                     class: "detail-items-container",
                     tabindex: "0",

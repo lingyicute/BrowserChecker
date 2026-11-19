@@ -1,18 +1,19 @@
     <!-- 加载动画覆盖层 -->
     <div class="loading-overlay" v-if="isLoading" :class="{ 'fade-out': isFadingOut }" role="status" aria-live="polite">
       <div class="loading-content">
-        <div class="loader"></div>
+        <div class="loader" aria-hidden="true"></div>
         <div class="loading-text">正在检测浏览器特性...</div>
       </div>
     </div>
 
     <div class="container content-loaded" v-if="!isLoading">
+      <h1 class="visually-hidden">浏览器检查</h1>
       <!-- 分数部分 -->
       <div class="score-wrapper">
         <div class="score-section block-item block-score">
           <div class="score-container">
             <div class="score" :class="scoreColorClass">{{ detectionError ? '—' : displayScore }}</div>
-            <div class="score-text">{{ detectionError ? '检测失败' : '浏览器得分' }}</div>
+            <h2 class="score-text">{{ detectionError ? '检测失败' : '浏览器得分' }}</h2>
           </div>
           <div class="animation-container" aria-hidden="true">
             <div class="circle-loader" :style="{ background: scoreColorGradient }"></div>
@@ -32,7 +33,7 @@
 
       <!-- 内核版本及建议块 -->
       <div class="block-item block-engine">
-        <h3>浏览器内核信息</h3>
+        <h2>浏览器内核信息</h2>
         <div class="browser-info">
           <p v-if="!detectionError"><strong>浏览器类型：</strong>{{ browserType }}</p>
           <p v-if="!detectionError && isChromeEngine"><strong>Chromium 内核版本：</strong>{{ chromeVersion }}</p>
@@ -45,7 +46,7 @@
 
       <!-- 现代特性支持情况及建议块 -->
       <div v-if="!detectionError" class="block-item block-features">
-        <h3>现代 Web 特性支持情况</h3>
+        <h2>现代 Web 特性支持情况</h2>
         <div class="features-summary">
           <div class="feature-stats">
             <div class="stat-item">
@@ -57,7 +58,7 @@
               <div class="stat-label">不支持特性</div>
             </div>
             <div class="stat-item">
-              <div class="stat-value">{{ getSupportRate() }}%</div>
+              <div class="stat-value">{{ getSupportRate() === null ? '—' : getSupportRate() + '%' }}</div>
               <div class="stat-label">支持率</div>
             </div>
             <div class="stat-item" v-if="getSkippedFeaturesCount() > 0">
@@ -84,7 +85,7 @@
 
       <!-- 详细检测结果块 -->
       <div v-if="!detectionError" class="block-item block-details">
-        <h3 id="details-heading">详细检测结果</h3>
+        <h2 id="details-heading">详细检测结果</h2>
         <div class="detail-items-container" tabindex="0" role="region" aria-labelledby="details-heading">
           <div class="detail-item" :class="{ 'detail-item-skipped': item.skipped }" v-for="(item, index) in detectionResults" :key="item.name" :style="{ animationDelay: `${Math.min(index, 12) * 0.03}s` }">
             <div class="detail-name">

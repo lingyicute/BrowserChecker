@@ -351,6 +351,16 @@ for (const mode of ['getter', 'open', 'timeout']) {
 }
 
 
+test('results have a landmark and heading outline without indefinite decorative animation', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await ready(page);
+  const main = page.getByRole('main');
+  await expect(main.getByRole('heading', { name: '浏览器检查', level: 1 })).toHaveCount(1);
+  await expect(main.getByRole('heading', { name: '详细检测结果', level: 2 })).toBeVisible();
+  await expect(main.locator('.animation-container')).toHaveAttribute('aria-hidden', 'true');
+  await expect(main.locator('.circle-loader')).toHaveCSS('animation-iteration-count', '2');
+});
+
 test('details remain inside their panel on narrow screens and can be scrolled by keyboard', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.setViewportSize({ width: 320, height: 720 });

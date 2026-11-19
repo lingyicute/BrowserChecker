@@ -73,7 +73,7 @@ const app = createApp({
     const getSupportRate = () => {
       const { supported, unsupported } = featureStats.value;
       const evaluated = supported + unsupported;
-      return evaluated ? Math.round((supported / evaluated) * 100) : 0;
+      return evaluated ? Math.round((supported / evaluated) * 100) : null;
     };
 
     // 检测项状态文字

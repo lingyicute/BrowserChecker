@@ -209,6 +209,7 @@ test('recommendations describe evaluated results without inferring whole-site co
   h.state.detectionResults.value = [];
   h.api.generateRecommendation();
   assert.match(h.state.recommendation.value, /无法给出支持率/);
+  assert.equal(h.state.getSupportRate(), null);
 });
 
 for (const [name, ua, touches, ios, mobile] of [

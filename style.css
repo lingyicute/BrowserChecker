@@ -12,6 +12,16 @@ body {
   overflow-x: hidden;
 }
 
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 /* 加载动画覆盖层 */
 .loading-overlay {
   position: fixed;
@@ -46,14 +56,14 @@ body {
   border: 5px solid rgba(255, 255, 255, 0.2);
   border-radius: 50%;
   border-top-color: #3b82f6;
-  animation: spin 1s linear infinite, pulse-glow 2s ease-in-out infinite;
+  animation: spin 1s linear 4, pulse-glow 2s ease-in-out 2;
 }
 
 .loading-text {
   margin-top: 20px;
   color: #f1f5f9;
   font-size: 16px;
-  animation: fadeInOut 1.5s ease-in-out infinite;
+  animation: fadeInOut 1.5s ease-in-out 3;
 }
 
 @keyframes spin {
@@ -206,7 +216,8 @@ body {
 
 .score-text {
   font-size: 18px;
-  color: #64748b;
+  font-weight: normal;
+  color: #475569;
 }
 
 /* 动画容器 */
@@ -222,7 +233,7 @@ body {
   height: 100%;
   border-radius: 50%;
   opacity: 0.2;
-  animation: pulse 2s ease-in-out infinite;
+  animation: pulse 2s ease-in-out 2;
 }
 
 @keyframes pulse {
@@ -272,7 +283,7 @@ body {
   background-color: #f8fafc;
 }
 
-.block-engine h3 {
+.block-engine h2 {
   margin-top: 0;
   color: #0f172a;
   font-size: 18px;
@@ -309,7 +320,7 @@ body {
   background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
 }
 
-.block-features h3 {
+.block-features h2 {
   margin-top: 0;
   color: #0f172a;
   font-size: 18px;
@@ -361,7 +372,7 @@ body {
   padding-bottom: 10px;
 }
 
-.block-details h3 {
+.block-details h2 {
   margin-top: 0;
   color: #0f172a;
   font-size: 18px;
