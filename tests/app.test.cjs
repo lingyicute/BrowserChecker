@@ -234,10 +234,16 @@ test('secure and file-origin exclusions; localhost remains eligible', () => {
   h.context.location.protocol = 'file:';
   h.context.window.isSecureContext = true;
   h.api.detectEnvironment();
-  assert.match(h.api.getSkipReason({ secure: true }), /file:/);
+  assert.equal(h.api.getSkipReason({ secure: true }), null);
+  assert.match(h.api.getSkipReason({ secure: true, siteOrigin: true }), /file:/);
+  h.context.location.protocol = 'https:';
+  h.context.window.origin = 'null';
+  h.api.detectEnvironment();
+  assert.match(h.api.getSkipReason({ secure: true, siteOrigin: true }), /不透明来源/);
+  h.context.window.origin = 'http://localhost:4173';
   h.context.location.protocol = 'http:';
   h.api.detectEnvironment();
-  assert.equal(h.api.getSkipReason({ secure: true }), null);
+  assert.equal(h.api.getSkipReason({ secure: true, siteOrigin: true }), null);
 });
 
 test('iOS notification exception distinguishes tabs from standalone apps', async () => {
@@ -440,10 +446,11 @@ test('ES2025+, CSS and platform additions are detected without invoking any inte
   h.context.Temporal = { Now: { instant: doNotInvoke, plainDateISO: doNotInvoke }, PlainDate: ctor() };
   Object.assign(w, { CSSScopeRule: ctor(), CSSStartingStyleRule: ctor(), CSSPropertyRule: ctor(), Highlight: ctor(),
     HTMLTemplateElement: ctor({ shadowRootMode: '' }), Element: ctor({ setHTMLUnsafe: doNotInvoke, moveBefore: doNotInvoke }),
-    HTMLButtonElement: ctor({ commandForElement: null }), CommandEvent: ctor(), onscrollend: null,
+    HTMLButtonElement: ctor({ commandForElement: null }), CommandEvent: ctor(),
     URLPattern: ctor(), OffscreenCanvas: ctor(), VideoDecoder: ctor(), scheduler: { postTask: doNotInvoke },
     crypto: { getRandomValues: doNotInvoke, randomUUID: doNotInvoke, subtle: { digest: doNotInvoke, encrypt: doNotInvoke } } });
   Object.assign(h.context.CSS, { registerProperty: doNotInvoke, highlights: { set: doNotInvoke, delete: doNotInvoke } });
+  h.context.document.onscrollend = null;
   h.context.HTMLScriptElement.supports = type => type === 'importmap';
   Object.assign(h.context.navigator, { serial: { requestPort: doNotInvoke }, hid: { requestDevice: doNotInvoke } });
   const find = await detect(h);
@@ -482,7 +489,7 @@ test('Web Serial and WebHID are skipped on mobile, Web Crypto and WebCodecs on i
   const mobile = harness();
   mobile.context.navigator.userAgent = 'Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/157.0.0.0 Mobile Safari/537.36';
   const findMobile = await detect(mobile);
-  for (const name of ['Web Serial API', 'WebHID API']) assert.equal(findMobile(name).reason, '移动端不提供此 API');
+  for (const name of ['Web Serial API', 'WebHID API']) assert.equal(findMobile(name).reason, '当前移动端环境未提供此 API');
   const insecure = harness();
   insecure.context.window.isSecureContext = false;
   const findInsecure = await detect(insecure);
@@ -619,6 +626,7 @@ test('unknown, allowed, missing or broken policy introspection does not bypass d
   for (const policy of [undefined, {},
     { features: () => [], allowsFeature: () => false },
     { features: () => ['usb'], allowsFeature: () => true },
+    { features: () => ['usb'], allowsFeature: () => undefined },
     { features: () => { throw new Error('blocked'); } }]) {
     h.context.document.permissionsPolicy = policy;
     assert.equal(h.api.getSkipReason(feature), null);
@@ -1093,4 +1101,101 @@ test('image probe ignores malformed securitypolicyviolation events', async () =>
   h.images[0].naturalWidth = h.images[0].naturalHeight = 1;
   h.images[0].onload();
   assert.equal(await pending, true);
+});
+
+test('file origins still test exposed secure-context APIs while skipping those needing a site', async () => {
+  const h = harness();
+  const method = () => { assert.fail('must not invoke detected interfaces'); };
+  h.context.location.protocol = 'file:';
+  h.context.navigator.serviceWorker = { register: method };
+  h.context.window.VideoDecoder = method;
+  const find = await detect(h);
+  assert.match(find('Service Worker').reason, /file:/);
+  assert.equal(find('WebCodecs API').supported, true);
+});
+
+test('platform skip rules never mask interfaces that the browser implements', async () => {
+  const android = harness();
+  const method = () => { assert.fail('must not prompt for permissions'); };
+  android.context.navigator.userAgent = 'Mozilla/5.0 (Linux; Android 15) Chrome/158.0 Mobile';
+  android.context.navigator.serial = { requestPort: method };
+  assert.equal((await detect(android))('Web Serial API').supported, true);
+  const ios = harness();
+  ios.context.navigator.userAgent = 'iPhone';
+  ios.context.navigator.xr = { requestSession: method };
+  assert.equal((await detect(ios))('WebXR Device API').supported, true);
+  const linux = harness();
+  linux.context.navigator.userAgent = 'X11; Linux';
+  linux.context.navigator.share = method;
+  assert.equal((await detect(linux))('Web Share API').supported, true);
+  delete linux.context.navigator.share;
+  assert.match((await detect(linux))('Web Share API').reason, /桌面 Linux/);
+});
+
+test('working legacy policy introspection is used when the newer interface is blocked', () => {
+  const h = harness();
+  Object.defineProperty(h.context.document, 'permissionsPolicy', { get() { throw new Error('blocked'); } });
+  h.context.document.featurePolicy = { features: () => ['usb'], allowsFeature: () => false };
+  assert.match(h.api.getSkipReason({ policy: 'usb' }), /Permissions Policy/);
+});
+
+test('media probes reject generic containers and invalid canPlayType responses', async () => {
+  const h = harness();
+  h.context.document.createElement = () => ({
+    canPlayType(type) {
+      return ['video/webm', 'audio/x-m4a'].includes(type) ? 'maybe' : 'no';
+    }
+  });
+  const generic = await detect(h);
+  assert.equal(generic('支持视频格式 WebM').supported, false);
+  assert.equal(generic('支持音频格式 AAC').supported, false);
+  h.context.document.createElement = () => ({
+    canPlayType: type => /av01|mp4a\.40\.2/.test(type) ? 'probably' : ''
+  });
+  const specific = await detect(h);
+  assert.equal(specific('支持视频格式 WebM').supported, true);
+  assert.equal(specific('支持音频格式 AAC').supported, true);
+});
+
+test('scrollend is detected at its actual document and element targets', async () => {
+  const h = harness();
+  h.context.window.onscrollend = null;
+  assert.equal((await detect(h))('scrollend 事件').supported, false);
+  h.context.document.onscrollend = null;
+  assert.equal((await detect(h))('scrollend 事件').supported, true);
+  delete h.context.document.onscrollend;
+  h.context.window.Element = function Element() {};
+  h.context.window.Element.prototype.onscrollend = null;
+  assert.equal((await detect(h))('scrollend 事件').supported, true);
+});
+
+test('unremovable storage probes are not reported as fully supported', () => {
+  const h = harness();
+  h.context.window.localStorage.removeItem = () => {};
+  assert.match(h.api.testStorage().reason, /未清除网站存储探测键/);
+});
+
+test('IndexedDB does not create a probe when deletion is unavailable', async () => {
+  const h = harness();
+  let calls = 0;
+  h.context.window.indexedDB = { open() { calls++; } };
+  assert.equal(await h.api.testIndexedDB(), false);
+  assert.equal(calls, 0);
+});
+
+test('image handler cleanup and an inaccessible rAF getter cannot interrupt detection', async () => {
+  const h = harness();
+  Object.defineProperty(h.context.window, 'requestAnimationFrame', { get() { throw new Error('blocked'); } });
+  const pending = h.mounted();
+  for (const image of h.images) {
+    Object.defineProperty(image, 'onerror', { set() { throw new Error('cleanup denied'); } });
+  }
+  completeImages(h);
+  await pending;
+  h.runTimers(800);
+  assert.equal(h.state.isLoading.value, false);
+  assert.equal(h.state.detectionError.value, false);
+  assert.equal(h.state.displayScore.value, h.state.totalScore.value);
+  assert.equal(h.listeners.get('securitypolicyviolation').size, 0);
+  assert.equal(h.timers.size, 0);
 });

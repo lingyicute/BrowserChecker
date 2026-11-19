@@ -86,11 +86,12 @@
 为了避免在受限环境下误报，以下情况的检测项会被标记为「已跳过」：
 
 - **非安全上下文**：依赖安全上下文的 API（例如 Service Worker、Clipboard、WebUSB、WebGPU、Wake Lock 等）在非 HTTPS 或非可信本地来源下不检测；`localhost` 等可信本地来源仍可参与检测。
-- **本地文件**：通过 `file://` 直接打开页面时，依赖网站来源的 API 会被跳过；建议通过 HTTPS 或 `localhost` 访问以获得完整结果。
-- **移动端**：EyeDropper API、Web Serial、WebHID 等明确仅桌面端提供的功能在移动端跳过。
-- **iOS / iPadOS**：在常见 WebKit 环境下，WebUSB、Web Bluetooth、WebXR、Idle Detection、Web MIDI、Speculation Rules 等不可用的功能会被跳过。
+- **本地文件**：通过 `file://` 直接打开页面时，只因网站来源缺失而跳过明确依赖该来源的 API（如 Service Worker、Cookie Store）；其他安全上下文 API 按浏览器实际环境检测。不透明来源也会跳过来源依赖项。建议通过 HTTPS 或 `localhost` 访问以获得完整结果。
+- **移动端**：EyeDropper、Web Serial、WebHID 等在未暴露对应接口时跳过；新版 Android 浏览器已提供的 Web Serial 会照常检测。
+- **iOS / iPadOS**：在 WebUSB、Web Bluetooth、WebXR、Idle Detection、Web MIDI、Speculation Rules 等接口不可用时跳过；已提供的接口仍按能力判断。
 - **iOS 通知**：普通 iOS 标签页不检测 Web Notifications；已添加到主屏幕并以独立 Web App 运行时可进行实际检测。
-- **桌面 Linux**：Web Share API 在该平台的浏览器实现受操作系统能力限制，因此不计入评分。
+- **桌面 Linux**：Web Share API 若未暴露则跳过；浏览器已提供时仍计入检测。
+- **媒体检测**：WebM / AAC 根据 `canPlayType` 对具体编码或媒体类型的声明判定；这不同于对 WebP / AVIF 样本执行实际图片解码。
 - **图片解码受限**：图片样本被 CSP 拦截或解码超时时跳过；明确解码失败才视为不支持。
 - **页面权限策略**：对已配置策略映射的检测项，如果浏览器提供 Permissions Policy 反射 API，且明确认识并禁止对应策略，则跳过。没有反射 API、未知策略或策略查询失败时仍执行原能力检测，不会据此假定 API 被禁止。此检查不查询或申请用户权限。
 - **API 访问受限**：能力检测访问接口时，若明确抛出 `SecurityError` 或 `NotAllowedError`，标记为无法评估并跳过；普通异常（如 `TypeError`）仍按不支持处理，不一律免除扣分。

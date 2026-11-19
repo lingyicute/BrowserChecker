@@ -23,6 +23,7 @@ const app = createApp({
     const isLinuxDesktop = ref(false);
     const isSecureContext = ref(true);
     const isFileOrigin = ref(false);
+    const isOpaqueOrigin = ref(false);
     const isStandalonePWA = ref(false);
     const skipNotices = ref([]);
 
@@ -99,8 +100,9 @@ const app = createApp({
 
     const animateScore = () => {
       const targetScore = totalScore.value;
+      const requestFrame = optionalValue(window, 'requestAnimationFrame');
       if (!Number.isFinite(targetScore) || targetScore <= 0 ||
-          typeof window.requestAnimationFrame !== 'function' || prefersReducedMotion() ||
+          typeof requestFrame !== 'function' || prefersReducedMotion() ||
           optionalValue(document, 'hidden') === true) {
         displayScore.value = targetScore;
         return;
@@ -138,7 +140,7 @@ const app = createApp({
       };
       const scheduleFrame = () => {
         try {
-          frame = window.requestAnimationFrame(updateScore);
+          frame = requestFrame.call(window, updateScore);
         } catch (e) {
           finish();
         }
@@ -168,6 +170,7 @@ const app = createApp({
       isLinuxDesktop.value = !isMobileDevice.value && /Linux|X11/i.test(ua) && !/Android|CrOS/i.test(ua);
 
       isFileOrigin.value = location.protocol === 'file:';
+      isOpaqueOrigin.value = optionalValue(window, 'origin') === 'null';
       isSecureContext.value = window.isSecureContext === true;
       const standaloneDisplay = matchesMedia('(display-mode: standalone)');
       isStandalonePWA.value = !!(standaloneDisplay || optionalValue(navigator, 'standalone') === true);
@@ -177,41 +180,43 @@ const app = createApp({
       return isMobileDevice.value;
     };
 
-    // 判断某个检测项在当前环境下是否应当跳过，返回跳过原因或 null
+    // 平台名单只是 API 缺失时的解释，不能盖过实际暴露的能力。
+    const getUnavailablePlatformReason = (feature) => {
+      if (feature.desktopOnly && isMobileDevice.value) return '当前移动端环境未提供此 API';
+      if (feature.skipOnIOS && isIOSDevice.value) return '当前 iOS 浏览器环境未提供此 API';
+      if (feature.skipOnLinuxDesktop && isLinuxDesktop.value) return '当前桌面 Linux 环境未提供此 API';
+      return null;
+    };
+
+    // 安全上下文和网站来源是两个条件。本地文件可以是安全上下文。
     const getSkipReason = (feature) => {
-      if (feature.secure && (isFileOrigin.value || !isSecureContext.value)) {
-        if (isFileOrigin.value) {
-          return 'file:// 本地页面没有可用于该 API 的网站来源';
-        }
+      if (feature.siteOrigin && (isFileOrigin.value || isOpaqueOrigin.value)) {
+        return isFileOrigin.value
+          ? 'file:// 本地页面没有可用于该 API 的网站来源'
+          : '当前页面使用不透明来源，无法评估此 API';
+      }
+      if (feature.secure && !isSecureContext.value) {
         return '需要安全上下文（HTTPS 或可信的本地来源）';
       }
-      if (feature.desktopOnly && isMobileDevice.value) {
-        return '移动端不提供此 API';
-      }
-      if (feature.skipOnIOS && isIOSDevice.value) {
-        return '当前 iOS 浏览器环境不提供此 API';
-      }
-      if (feature.skipOnLinuxDesktop && isLinuxDesktop.value) {
-        return '桌面 Linux 平台默认不提供此 API';
-      }
-      // 只信任浏览器明确认识且明确禁止的策略名称，未知策略不能当作“不支持”。
-      // 不查询/申请用户权限，也不改变 API 正常可检测时的评分。
+      // 只信任浏览器明确认识且明确禁止的策略名称；不查询或申请用户权限。
       if (feature.policy || feature.policiesAll) {
-        try {
-          const policy = document.permissionsPolicy || document.featurePolicy;
-          if (policy && typeof policy.features === 'function' &&
-              typeof policy.allowsFeature === 'function') {
+        const anyPolicies = feature.policy
+          ? (Array.isArray(feature.policy) ? feature.policy : [feature.policy])
+          : [];
+        for (const property of ['permissionsPolicy', 'featurePolicy']) {
+          const policy = optionalValue(document, property);
+          try {
+            if (!hasMethods(policy, ['features', 'allowsFeature'])) continue;
             const known = policy.features();
-            const isDenied = (name) => known.includes(name) && !policy.allowsFeature(name);
-            const anyPolicies = feature.policy
-              ? (Array.isArray(feature.policy) ? feature.policy : [feature.policy])
-              : [];
+            if (!Array.isArray(known)) continue;
+            const isDenied = (name) => known.includes(name) && policy.allowsFeature(name) === false;
             if (anyPolicies.some(isDenied) ||
                 (feature.policiesAll && feature.policiesAll.length > 0 && feature.policiesAll.every(isDenied))) {
               return '被页面权限策略（Permissions Policy）禁用';
             }
-          }
-        } catch (e) { /* 不支持策略 introspection 的浏览器仍执行原能力检测。 */ }
+            break;
+          } catch (e) { /* 尝试旧接口，否则直接执行能力检测。 */ }
+        }
       }
       if (typeof feature.skipIf === 'function') {
         try {
@@ -239,8 +244,9 @@ const app = createApp({
         clearTimeout(timer);
         clearTimeout(errorTimer);
         if (img) {
-          img.onload = img.onerror = null;
           // 清理属于尽力而为；不能在 settled 后抛错，导致 Promise 永远无法完成。
+          try { img.onload = null; } catch (e) {}
+          try { img.onerror = null; } catch (e) {}
           try { img.removeAttribute('src'); } catch (e) {}
         }
         try { document.removeEventListener('securitypolicyviolation', onPolicyViolation); } catch (e) {}
@@ -258,7 +264,10 @@ const app = createApp({
       try {
         img = new Image();
         document.addEventListener('securitypolicyviolation', onPolicyViolation);
-        img.onload = () => finish(img.naturalWidth > 0 && img.naturalHeight > 0);
+        img.onload = () => {
+          try { finish(img.naturalWidth > 0 && img.naturalHeight > 0); }
+          catch (e) { finish({ skipped: true, reason: '无法读取图片解码结果' }); }
+        };
         // 给异步 CSP 事件留出时间；普通解码失败仍然标记为不支持。
         img.onerror = () => {
           clearTimeout(errorTimer);
@@ -289,7 +298,13 @@ const app = createApp({
           if (key === null) return { skipped: true, reason: '无法分配独立的网站存储检测键' };
           storage.setItem(key, key);
           written = true;
-          if (storage.getItem(key) !== key) return false;
+          const matches = storage.getItem(key) === key;
+          storage.removeItem(key);
+          written = false;
+          if (storage.getItem(key) === key) {
+            return { skipped: true, reason: '浏览器未清除网站存储探测键' };
+          }
+          if (!matches) return false;
         } catch (error) {
           if (error && (error.name === 'SecurityError' || error.name === 'NotAllowedError' ||
               error.name === 'QuotaExceededError' || error.name === 'NS_ERROR_DOM_QUOTA_REACHED')) {
@@ -298,7 +313,9 @@ const app = createApp({
           return false;
         } finally {
           if (written) {
-            try { storage.removeItem(key); } catch (e) { /* 策略可能在检测期间变化。 */ }
+            try {
+              if (storage.getItem(key) === key) storage.removeItem(key);
+            } catch (e) { /* 策略可能在检测期间变化。 */ }
           }
         }
       }
@@ -341,11 +358,11 @@ const app = createApp({
       };
       try {
         factory = window.indexedDB;
-        if (!factory || typeof factory.open !== 'function') { finish(false); return; }
+        if (!hasMethods(factory, ['open', 'deleteDatabase'])) { finish(false); return; }
         timer = setTimeout(() => finish({ skipped: true, reason: 'IndexedDB 检测超时，无法评估' }), 2000);
         request = factory.open(name);
         request.onblocked = () => finish(restricted);
-        request.onerror = () => { if (!settled) fail(request.error); };
+        request.onerror = () => { if (!settled) fail(optionalValue(request, 'error')); };
         request.onupgradeneeded = (event) => {
           // 万一名称碰撞，不读写、更不删除已有数据库；超时后的升级直接回滚。
           if (settled || event.oldVersion !== 0) {
@@ -358,7 +375,9 @@ const app = createApp({
           // 保留原始事务错误，避免把存储限制误算为浏览器缺少 IndexedDB。
           const upgrade = request.transaction;
           let write;
-          if (upgrade) upgrade.onabort = () => { if (!settled) fail(upgrade.error || write?.error); };
+          if (upgrade) upgrade.onabort = () => {
+            if (!settled) fail(optionalValue(upgrade, 'error') || optionalValue(write, 'error'));
+          };
           try {
             write = request.result.createObjectStore('probe').put('ok', 'probe');
           } catch (error) {
@@ -376,8 +395,10 @@ const app = createApp({
           try {
             const transaction = database.transaction('probe', 'readonly');
             const read = transaction.objectStore('probe').get('probe');
-            transaction.oncomplete = () => finish(read.result === 'ok');
-            transaction.onabort = () => fail(transaction.error || read.error);
+            transaction.oncomplete = () => {
+              try { finish(read.result === 'ok'); } catch (error) { fail(error); }
+            };
+            transaction.onabort = () => fail(optionalValue(transaction, 'error') || optionalValue(read, 'error'));
             database.onversionchange = () => finish(restricted);
           } catch (error) { fail(error); }
         };
@@ -403,14 +424,22 @@ const app = createApp({
     const supportsCSS = (...args) => hasMethods(window.CSS, ['supports']) &&
       !!window.CSS.supports(...args);
 
+    // canPlayType 返回浏览器对具体媒体类型的判断，不代表已播放样本。
+    const canPlay = (elementName, types) => {
+      const media = document.createElement(elementName);
+      return typeof media.canPlayType === 'function' && types.some(type => {
+        const result = media.canPlayType(type);
+        return result === 'probably' || result === 'maybe';
+      });
+    };
+
     // 检测现代Web功能
     // 每个检测项可选字段：
     //   policy            - 对应 Permissions Policy（单条或数组）；任一策略明确禁用时跳过
     //   policiesAll       - 对应多条 Permissions Policy；全部明确禁用时跳过
-    //   secure            - 需要安全上下文（HTTPS），非 HTTPS 下跳过
-    //   desktopOnly       - 当前确实仅桌面端提供，移动端跳过
-    //   skipOnIOS         - 常见 iOS WebKit 环境不提供，跳过
-    //   skipOnLinuxDesktop- 桌面 Linux 平台默认不提供，跳过
+    //   secure            - 需要安全上下文；由浏览器判定，不直接等同于 HTTPS
+    //   siteOrigin        - 需要网站来源；本地文件与不透明来源跳过
+    //   desktopOnly / skipOnIOS / skipOnLinuxDesktop - 接口缺失时按平台跳过
     //   skipIf            - 根据当前运行形态返回跳过原因
     // test 可以返回布尔值、Promise<boolean>，或返回 { skipped: true, reason } 表示运行时判定为环境限制
     const checkModernFeatures = async () => {
@@ -429,7 +458,7 @@ const app = createApp({
         }},
         { name: 'Fetch API', test: () => typeof window.fetch === 'function' },
         { name: 'Promise', test: () => typeof window.Promise === 'function' },
-        { name: 'Service Worker', secure: true, test: () => hasMethods(navigator.serviceWorker, ['register']) },
+        { name: 'Service Worker', secure: true, siteOrigin: true, test: () => hasMethods(navigator.serviceWorker, ['register']) },
         { name: 'WebAssembly', test: () => hasMethods(window.WebAssembly, ['compile', 'instantiate']) },
         { name: 'Async/Await', test: () => {
           try {
@@ -474,10 +503,10 @@ const app = createApp({
         { name: 'WebXR Device API', policy: 'xr-spatial-tracking', secure: true, skipOnIOS: true, test: () => hasMethods(navigator.xr, ['requestSession']) },
         { name: 'WebUSB', policy: 'usb', secure: true, skipOnIOS: true, test: () => hasMethods(navigator.usb, ['requestDevice']) },
         { name: 'Web Bluetooth', policy: 'bluetooth', secure: true, skipOnIOS: true, test: () => hasMethods(navigator.bluetooth, ['requestDevice']) },
-        { name: 'WebAuthn', policy: ['publickey-credentials-get', 'publickey-credentials-create'], secure: true, test: () => hasMethods(navigator.credentials, ['get', 'create']) && typeof window.PublicKeyCredential === 'function' },
+        { name: 'WebAuthn', policy: ['publickey-credentials-get', 'publickey-credentials-create'], secure: true, siteOrigin: true, test: () => hasMethods(navigator.credentials, ['get', 'create']) && typeof window.PublicKeyCredential === 'function' },
         { name: 'Geolocation API', policy: 'geolocation', secure: true, test: () => hasMethods(navigator.geolocation, ['getCurrentPosition']) },
         { name: 'IndexedDB', test: testIndexedDB },
-        { name: 'Web Notifications', secure: true,
+        { name: 'Web Notifications', secure: true, siteOrigin: true,
           // iOS 的 Notifications API 主要面向已添加到主屏幕的 Web App。
           // 普通标签页跳过，主屏幕 Web App 则进行实际检测。
           skipIf: () => (isIOSDevice.value && !isStandalonePWA.value)
@@ -489,20 +518,13 @@ const app = createApp({
           screen.orientation.type.length > 0 && Number.isFinite(screen.orientation.angle)) },
         { name: 'Gamepad API', policy: 'gamepad', secure: true, test: () => typeof navigator.getGamepads === 'function' },
         { name: 'Web Components', test: () => hasMethods(window.customElements, ['define', 'get']) },
-        { name: '支持视频格式 WebM', test: () => {
-          const video = document.createElement('video');
-          if (typeof video.canPlayType !== 'function') return false;
-          return !!(video.canPlayType('video/webm; codecs="vp8, vorbis"') ||
-                    video.canPlayType('video/webm; codecs="vp9, opus"') ||
-                    video.canPlayType('video/webm'));
-        }},
-        { name: '支持音频格式 AAC', test: () => {
-          const audio = document.createElement('audio');
-          if (typeof audio.canPlayType !== 'function') return false;
-          return !!(audio.canPlayType('audio/aac') ||
-                    audio.canPlayType('audio/mp4; codecs="mp4a.40.2"') ||
-                    audio.canPlayType('audio/x-m4a'));
-        }},
+        { name: '支持视频格式 WebM', test: () => canPlay('video', [
+          'video/webm; codecs="vp8, vorbis"', 'video/webm; codecs="vp9, opus"',
+          'video/webm; codecs="av01.0.04M.08, opus"'
+        ]) },
+        { name: '支持音频格式 AAC', test: () => canPlay('audio', [
+          'audio/aac', 'audio/mp4; codecs="mp4a.40.2"'
+        ]) },
         { name: 'requestAnimationFrame', test: () => typeof window.requestAnimationFrame === 'function' },
         { name: 'Storage API', test: testStorage },
         { name: 'Clipboard API', policiesAll: ['clipboard-read', 'clipboard-write'], secure: true, test: () => {
@@ -518,7 +540,7 @@ const app = createApp({
         { name: '支持图像格式 WebP', test: () => testImageDecode(WEBP_SAMPLE) },
         { name: '支持图像格式 AVIF', test: () => testImageDecode(AVIF_SAMPLE) },
         { name: 'URL.createObjectURL', test: () => typeof URL !== 'undefined' && hasMethods(URL, ['createObjectURL']) },
-        { name: 'Web Locks API', secure: true, test: () => hasMethods(navigator.locks, ['request']) },
+        { name: 'Web Locks API', secure: true, siteOrigin: true, test: () => hasMethods(navigator.locks, ['request']) },
         // 新版 Chromium Android 已逐步提供文件选择器；这里使用能力检测，
         // 不再把整个 File System Access API 一刀切为桌面专属。
         { name: 'File System Access API', secure: true, test: () => typeof window.showOpenFilePicker === 'function' },
@@ -530,7 +552,7 @@ const app = createApp({
         { name: 'WebGPU API', secure: true, test: () => hasMethods(navigator.gpu, ['requestAdapter']) },
         { name: 'WebTransport API', secure: true, test: () => typeof window.WebTransport === 'function' },
         { name: 'Compression Streams API', test: () => typeof window.CompressionStream === 'function' },
-        { name: 'Cookie Store API', secure: true, test: () => hasMethods(window.cookieStore, ['get', 'set']) },
+        { name: 'Cookie Store API', secure: true, siteOrigin: true, test: () => hasMethods(window.cookieStore, ['get', 'set']) },
         { name: 'Idle Detection API', policy: 'idle-detection', secure: true, skipOnIOS: true, test: () => typeof window.IdleDetector === 'function' },
         { name: 'Web MIDI API', policy: 'midi', secure: true, skipOnIOS: true, test: () => typeof navigator.requestMIDIAccess === 'function' },
         { name: 'Reporting API', test: () => typeof window.ReportingObserver === 'function' },
@@ -538,7 +560,7 @@ const app = createApp({
         { name: 'EyeDropper API', secure: true, desktopOnly: true, test: () => typeof window.EyeDropper === 'function' },
         { name: 'ScrollTimeline / ViewTimeline', test: () => typeof window.ScrollTimeline === 'function' || typeof window.ViewTimeline === 'function' },
         { name: 'MediaSession API', test: () => hasMethods(navigator.mediaSession, ['setActionHandler']) },
-        { name: 'Credential Management API', secure: true, test: () => hasMethods(navigator.credentials, ['get', 'create']) },
+        { name: 'Credential Management API', secure: true, siteOrigin: true, test: () => hasMethods(navigator.credentials, ['get', 'create']) },
         // --- 针对 Chromium 120-150 新增的新特性检测 ---
         { name: 'Popover API', test: () => 'popover' in HTMLElement.prototype &&
           hasMethods(HTMLElement.prototype, ['showPopover', 'hidePopover', 'togglePopover']) },
@@ -584,7 +606,8 @@ const app = createApp({
         { name: 'Invoker Commands（commandfor）', test: () => typeof window.HTMLButtonElement === 'function' &&
           'commandForElement' in window.HTMLButtonElement.prototype && typeof window.CommandEvent === 'function' },
         { name: 'Element.moveBefore()', test: () => !!window.Element && hasMethods(window.Element.prototype, ['moveBefore']) },
-        { name: 'scrollend 事件', test: () => 'onscrollend' in window },
+        { name: 'scrollend 事件', test: () => 'onscrollend' in document ||
+          (!!window.Element && 'onscrollend' in window.Element.prototype) },
         { name: 'URLPattern API', test: () => typeof window.URLPattern === 'function' },
         { name: 'Import Maps', test: () => typeof HTMLScriptElement !== 'undefined' &&
           hasMethods(HTMLScriptElement, ['supports']) && !!HTMLScriptElement.supports('importmap') },
@@ -625,6 +648,13 @@ const app = createApp({
           }
         }
 
+        if (!supported && !skipped) {
+          const platformReason = getUnavailablePlatformReason(feature);
+          if (platformReason) {
+            skipped = true;
+            reason = platformReason;
+          }
+        }
         return { name: feature.name, supported, skipped, reason };
       }));
 
@@ -635,7 +665,7 @@ const app = createApp({
       });
 
       // 汇总跳过原因，用于页面提示
-      const reasonCount = {};
+      const reasonCount = Object.create(null);
       results.filter(r => r.skipped).forEach(r => {
         reasonCount[r.reason] = (reasonCount[r.reason] || 0) + 1;
       });
@@ -811,7 +841,7 @@ const app = createApp({
     const finishLoading = () => {
       if (window.browserCheckerStartup) window.browserCheckerStartup.complete();
       isFadingOut.value = true;
-      if (prefersReducedMotion()) {
+      if (prefersReducedMotion() || optionalValue(document, 'hidden') === true) {
         isLoading.value = false;
         return;
       }

@@ -145,6 +145,9 @@ test('direct file access still works and skips origin-dependent APIs', async ({ 
   await ready(page, pathToFileURL(path.join(rootDir, 'index.html')).href);
   await expect(page.locator('.notice-local-file')).toBeVisible();
   await expect(feature(page, 'Service Worker').locator('.detail-status')).toHaveText('已跳过');
+  if (await page.evaluate(() => window.isSecureContext && !!crypto.subtle)) {
+    await expect(feature(page, 'Web Crypto API').locator('.detail-status')).toHaveText('支持');
+  }
 });
 
 test('disabled JavaScript gets an explicit message, not raw template content', async ({ browser }) => {
@@ -292,7 +295,7 @@ for (const mode of ['getter', 'open', 'timeout']) {
           return { open() {
             if (mode === 'open') throw new DOMException('blocked', 'SecurityError');
             return {};
-          } };
+          }, deleteDatabase() {} };
         }
       });
     }, mode);
