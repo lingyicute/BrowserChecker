@@ -93,8 +93,7 @@ async function detect(h) {
 test('browser policy and warning template remain stable', () => {
   const lock = require('./fixtures/policy-lock.json');
   const hash = text => createHash('sha256').update(text).digest('hex');
-  const policy = source.slice(source.indexOf('    // 检测浏览器类型和版本'), source.indexOf('    // 收尾'))
-    .replace('/firefox|fxios/i.test(ua)', '/firefox/i.test(ua)');
+  const policy = source.slice(source.indexOf('    // 检测浏览器类型和版本'), source.indexOf('    // 收尾'));
   assert.equal(hash(policy), lock.policySha256);
   const html = fs.readFileSync(path.join(rootDir, 'index.html'), 'utf8');
   const warning = html.slice(html.indexOf('      <!-- 国产/套壳浏览器警告块 -->'), html.indexOf('      <!-- 内核版本及建议块 -->'));
@@ -146,6 +145,21 @@ test('Chromium upgrade recommendations track the current Stable baseline', () =>
     h.api.detectBrowserInfo();
     assert.ok(h.state.recommendation.value.includes(text), `Chromium ${version}`);
   }
+});
+
+test('iOS Chrome is labelled as WebKit-based Chrome, not as a Chromium engine', () => {
+  const h = harness();
+  h.context.navigator.userAgent = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/157.0.0.0 Mobile/15E148 Safari/604.1';
+  h.api.detectEnvironment();
+  h.api.detectBrowserInfo();
+  assert.equal(h.state.browserType.value, 'Chrome（iOS）');
+  assert.equal(h.state.isChromeEngine.value, false);
+  assert.equal(h.state.totalScore.value, 100);
+  assert.match(h.state.recommendation.value, /未使用 Chromium 内核/);
+  h.context.navigator.userAgent = 'Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Mobile Safari/537.36';
+  h.api.detectBrowserInfo();
+  assert.equal(h.state.browserType.value, 'Chromium');
+  assert.equal(h.state.isChromeEngine.value, true);
 });
 
 test('iOS Firefox is not Safari or Chromium', () => {

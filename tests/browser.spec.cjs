@@ -208,6 +208,16 @@ test('iOS Firefox UA renders Firefox without claiming a Chromium engine', async 
   await expect(page.locator('.mobile-notice').first()).toContainText('iOS');
 });
 
+test('iOS Chrome UA is labelled Chrome (iOS) and does not contradict the engine advice', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'userAgent', { value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/157.0.0.0 Mobile/15E148 Safari/604.1' });
+  });
+  await ready(page);
+  await expect(page.locator('.browser-info')).toContainText('浏览器类型：Chrome（iOS）');
+  await expect(page.locator('.browser-info')).not.toContainText('Chromium 内核版本：');
+  await expect(page.locator('.browser-info')).toContainText('未使用 Chromium 内核');
+});
+
 
 test('optional environment and animation failures preserve the completed result', async ({ page }) => {
   await page.addInitScript(() => {

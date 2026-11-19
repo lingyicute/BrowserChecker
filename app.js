@@ -638,9 +638,13 @@ const app = createApp({
         browserType.value = 'Edge';
       } else if (/opera|opr/i.test(ua)) {
         browserType.value = 'Opera';
-      } else if (/safari/i.test(ua) && !/chrome|crios/i.test(ua)) {
+      } else if (/crios/i.test(ua)) {
+        // iOS 上的 Chrome 使用系统 WebKit 而非 Chromium 内核，
+        // 不能标为 Chromium，否则与下方“未使用 Chromium 内核”的建议自相矛盾。
+        browserType.value = 'Chrome（iOS）';
+      } else if (/safari/i.test(ua) && !/chrome/i.test(ua)) {
         browserType.value = 'Safari';
-      } else if (/chrome|crios/i.test(ua)) {
+      } else if (/chrome/i.test(ua)) {
         browserType.value = 'Chromium';
       } else {
         browserType.value = '未知浏览器';
