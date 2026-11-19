@@ -25,7 +25,7 @@
 
 ## 📖 Overview
 
-点开页面，它就会：识别你的浏览器类型与内核版本，检查 91 项现代 Web 能力，分辨国产浏览器、套壳浏览器和应用内 WebView，并把结果整理成一个 0–100 的分数和几条可读的建议。
+点开页面，它就会：识别你的浏览器类型与内核版本，检查 105 项现代 Web 能力，分辨国产浏览器、套壳浏览器和应用内 WebView，并把结果整理成一个 0–100 的分数和几条可读的建议。
 
 这个项目仍然是一个**无需构建的静态网站**：`index.html`、`style.css`、`app.js` 和 `startup.js` 就是运行时的全部。没有后端、没有账号、没有追踪，部署到任意静态托管即可。你也可以直接打开 `index.html`，或访问官方站点 [test.92li.uk](https://test.92li.uk)。
 
@@ -33,9 +33,10 @@
 
 ## ✨ Features
 
-- **🔍 91 项现代 Web 能力检测**
+- **🔍 105 项现代 Web 能力检测**
   - 覆盖 ES6、Fetch API、WebAssembly 等常见特性，以及 Navigation API、Math.sumPrecise()、Iterator.concat()、Intl.Locale 信息 API、CSS field-sizing 与 :open 等现代特性。
   - 包含 Temporal、Set 集合运算、Iterator Helpers、Float16Array、Uint8Array Base64 等 ES2025+ 内置能力，@scope、@starting-style、锚点定位、subgrid 等 Baseline CSS 能力，以及声明式 Shadow DOM、Invoker Commands、URLPattern、WebCodecs、Web Crypto 等平台 API。
+  - 也检测 `Promise.withResolvers()`、`Promise.try()`、`Array.fromAsync()`、集合分组、`Error.isError()`、CSS 分层与相对颜色、类型化 `attr()`、离散过渡、对话框关闭请求、OPFS、Sanitizer 等现代能力。
   - 每项结果都会显示为「支持 / 不支持 / 已跳过」，并附上跳过原因。
 
 - **🧭 浏览器与内核信息**

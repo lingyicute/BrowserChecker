@@ -377,7 +377,8 @@ test('feature score, sorting, support rate and notice counts exclude skipped ite
   const h = harness();
   await detect(h);
   const items = h.state.detectionResults.value;
-  assert.equal(items.length, 91);
+  assert.equal(items.length, 105);
+  assert.equal(new Set(items.map(item => item.name)).size, items.length);
   const supported = items.filter(i => i.supported).length;
   const unsupported = items.filter(i => !i.supported && !i.skipped).length;
   assert.equal(h.state.totalScore.value, 100 - unsupported * 2);
@@ -458,7 +459,7 @@ test('ES2025+, CSS and platform additions are detected without invoking any inte
     assert.equal(find(name).supported, true, name);
     assert.equal(find(name).skipped, false, name);
   }
-  assert.equal(h.state.detectionResults.value.length, 91);
+  assert.equal(h.state.detectionResults.value.length, 105);
 });
 
 test('ES2025+, CSS and platform additions reject partial or placeholder interfaces', async () => {
@@ -556,7 +557,7 @@ test('blocked optional environment APIs do not abort detection', async () => {
   h.runTimers(800);
   assert.equal(h.state.detectionError.value, false);
   assert.equal(h.state.isLoading.value, false);
-  assert.equal(h.state.detectionResults.value.length, 91);
+  assert.equal(h.state.detectionResults.value.length, 105);
 });
 
 test('animation exceptions cannot invalidate a completed score', () => {
@@ -775,7 +776,7 @@ for (const property of ['mobile', 'maxTouchPoints', 'standalone']) {
     await pending;
     h.runTimers(800);
     assert.equal(h.state.detectionError.value, false);
-    assert.equal(h.state.detectionResults.value.length, 91);
+    assert.equal(h.state.detectionResults.value.length, 105);
   });
 }
 
@@ -1066,7 +1067,7 @@ for (const errorName of ['SecurityError', 'NotAllowedError', 'TypeError']) {
     assert.equal(result.skipped, errorName !== 'TypeError');
     if (result.skipped) assert.match(result.reason, /安全策略|权限/);
     assert.equal(find('Storage API').supported, true);
-    assert.equal(h.state.detectionResults.value.length, 91);
+    assert.equal(h.state.detectionResults.value.length, 105);
   });
 }
 
@@ -1198,4 +1199,73 @@ test('image handler cleanup and an inaccessible rAF getter cannot interrupt dete
   assert.equal(h.state.displayScore.value, h.state.totalScore.value);
   assert.equal(h.listeners.get('securitypolicyviolation').size, 0);
   assert.equal(h.timers.size, 0);
+});
+
+const expandedFeatureNames = ['Object.groupBy() / Map.groupBy()', 'Promise.withResolvers()', 'Promise.try()',
+  'Array.fromAsync()', 'Error.isError()', 'CSS @layer', 'CSS 相对颜色', 'CSS transition-behavior', 'CSS 类型化 attr()',
+  'AbortSignal.any() / timeout()', 'HTMLDialogElement.requestClose()', 'IntersectionObserver.scrollMargin',
+  'Origin Private File System（OPFS）', 'Sanitizer API'];
+
+test('expanded capabilities inspect complete interfaces and CSS syntax without external effects', async () => {
+  const h = harness();
+  const doNotCall = () => { assert.fail('must not invoke detected APIs or getters'); };
+  const ctor = (proto = {}) => Object.assign(function Ctor() { doNotCall(); }, { prototype: proto });
+  for (const [name, prop] of [['Object', 'groupBy'], ['Map', 'groupBy'], ['Array', 'fromAsync'], ['Error', 'isError']]) {
+    const intrinsic = vm.runInNewContext(name);
+    h.context[name] = Object.assign(ctor(), { [prop]: doNotCall });
+    // The app may need other static methods on these intrinsics for unrelated work.
+    Object.setPrototypeOf(h.context[name], intrinsic);
+  }
+  const observer = ctor();
+  Object.defineProperty(observer.prototype, 'scrollMargin', { get: doNotCall });
+  Object.assign(h.context.window, {
+    Promise: Object.assign(ctor(), { withResolvers: doNotCall, try: doNotCall }),
+    CSSLayerBlockRule: ctor(), CSSLayerStatementRule: ctor(),
+    AbortSignal: Object.assign(ctor(), { any: doNotCall, timeout: doNotCall }),
+    HTMLDialogElement: ctor({ requestClose: doNotCall }), IntersectionObserver: observer,
+    Sanitizer: ctor(), Element: ctor({ setHTML: doNotCall })
+  });
+  h.context.navigator.storage = { getDirectory: doNotCall };
+  const cssQueries = [];
+  h.context.window.CSS.supports = (...args) => { cssQueries.push(args); return true; };
+  const find = await detect(h);
+  for (const name of expandedFeatureNames) {
+    assert.equal(find(name).supported, true, name);
+    assert.equal(find(name).skipped, false, name);
+  }
+  assert.ok(cssQueries.some(([prop, value]) => prop === 'width' && value.startsWith('attr(data-width type(')));
+});
+
+test('expanded probes reject partial interfaces, old CSS attr() and fake observers', async () => {
+  const h = harness();
+  const w = h.context.window;
+  h.context.Object = Object.assign(Object.create(Object), { groupBy: () => {} });
+  h.context.Map = function Map() {};
+  h.context.Array = Object.assign(Object.create(Array), { fromAsync: {} });
+  h.context.Error = { isError: null };
+  w.Promise = { try: null, withResolvers: {} };
+  w.CSSLayerBlockRule = function CSSLayerBlockRule() {};
+  w.AbortSignal = Object.assign(function AbortSignal() {}, { any: () => {} });
+  w.HTMLDialogElement = { requestClose: () => {} };
+  w.IntersectionObserver = function IntersectionObserver() {};
+  w.IntersectionObserver.prototype.scrollMargin = undefined;
+  w.Sanitizer = function Sanitizer() {};
+  w.Element = function Element() {};
+  h.context.navigator.storage = { getDirectory: {} };
+  w.CSS.supports = (property, value) => property === 'content' && value.startsWith('attr(');
+  const find = await detect(h);
+  for (const name of expandedFeatureNames) assert.equal(find(name).supported, false, name);
+});
+
+test('OPFS requires a secure site origin and never opens the directory', async () => {
+  const h = harness();
+  h.context.navigator.storage = { getDirectory() { assert.fail('must not open a directory'); } };
+  const name = 'Origin Private File System（OPFS）';
+  h.context.window.isSecureContext = false;
+  assert.match((await detect(h))(name).reason, /安全上下文/);
+  h.context.window.isSecureContext = true;
+  h.context.location.protocol = 'file:';
+  assert.match((await detect(h))(name).reason, /file:/);
+  h.context.location.protocol = 'http:';
+  assert.equal((await detect(h))(name).supported, true);
 });

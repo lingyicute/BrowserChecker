@@ -589,7 +589,13 @@ const app = createApp({
           hasMethods(Uint8Array, ['fromBase64', 'fromHex']) && hasMethods(Uint8Array.prototype, ['toBase64', 'toHex']) },
         { name: 'Temporal API', test: () => typeof Temporal === 'object' && !!Temporal &&
           hasMethods(Temporal.Now, ['instant', 'plainDateISO']) && typeof Temporal.PlainDate === 'function' },
-        // --- Baseline 2024 / 2025 CSS 能力 ---
+        { name: 'Object.groupBy() / Map.groupBy()', test: () => hasMethods(Object, ['groupBy']) &&
+          typeof Map === 'function' && hasMethods(Map, ['groupBy']) },
+        { name: 'Promise.withResolvers()', test: () => hasMethods(window.Promise, ['withResolvers']) },
+        { name: 'Promise.try()', test: () => hasMethods(window.Promise, ['try']) },
+        { name: 'Array.fromAsync()', test: () => typeof Array.fromAsync === 'function' },
+        { name: 'Error.isError()', test: () => typeof Error.isError === 'function' },
+        // --- Baseline 与较新的 CSS 能力 ---
         { name: 'CSS @scope', test: () => typeof window.CSSScopeRule === 'function' },
         { name: 'CSS @starting-style', test: () => typeof window.CSSStartingStyleRule === 'function' },
         { name: 'CSS @property', test: () => hasMethods(window.CSS, ['registerProperty']) &&
@@ -599,7 +605,13 @@ const app = createApp({
         { name: 'CSS 锚点定位', test: () => supportsCSS('anchor-name: --a') && supportsCSS('position-anchor: --a') },
         { name: 'CSS Custom Highlight API', test: () => !!window.CSS &&
           hasMethods(window.CSS.highlights, ['set', 'delete']) && typeof window.Highlight === 'function' },
-        // --- Baseline 2024 / 2025 Web 平台能力：不创建元素实例、不发起解析或任务 ---
+        { name: 'CSS @layer', test: () => typeof window.CSSLayerBlockRule === 'function' &&
+          typeof window.CSSLayerStatementRule === 'function' },
+        { name: 'CSS 相对颜色', test: () => supportsCSS('color', 'rgb(from rebeccapurple r g b / 50%)') },
+        { name: 'CSS transition-behavior', test: () => supportsCSS('transition-behavior', 'allow-discrete') },
+        // 不测 content: attr(...)，它会把只支持旧字符串形式的浏览器算作支持。
+        { name: 'CSS 类型化 attr()', test: () => supportsCSS('width', 'attr(data-width type(<length>), 1px)') },
+        // --- Baseline 与较新的 Web 平台能力：不创建元素实例、不发起解析或任务 ---
         { name: '声明式 Shadow DOM / setHTMLUnsafe()', test: () => typeof window.HTMLTemplateElement === 'function' &&
           'shadowRootMode' in window.HTMLTemplateElement.prototype &&
           !!window.Element && hasMethods(window.Element.prototype, ['setHTMLUnsafe']) },
@@ -616,6 +628,17 @@ const app = createApp({
           hasMethods(window.crypto.subtle, ['digest', 'encrypt']) },
         { name: 'WebCodecs API', secure: true, test: () => typeof window.VideoDecoder === 'function' },
         { name: 'Prioritized Task Scheduling（scheduler.postTask）', test: () => hasMethods(window.scheduler, ['postTask']) },
+        { name: 'AbortSignal.any() / timeout()', test: () => typeof window.AbortSignal === 'function' &&
+          hasMethods(window.AbortSignal, ['any', 'timeout']) },
+        { name: 'HTMLDialogElement.requestClose()', test: () => typeof window.HTMLDialogElement === 'function' &&
+          hasMethods(window.HTMLDialogElement.prototype, ['requestClose']) },
+        { name: 'IntersectionObserver.scrollMargin', test: () => typeof window.IntersectionObserver === 'function' &&
+          !!window.IntersectionObserver.prototype && typeof Object.getOwnPropertyDescriptor(
+            window.IntersectionObserver.prototype, 'scrollMargin')?.get === 'function' },
+        { name: 'Origin Private File System（OPFS）', secure: true, siteOrigin: true,
+          test: () => hasMethods(navigator.storage, ['getDirectory']) },
+        { name: 'Sanitizer API', test: () => typeof window.Sanitizer === 'function' &&
+          hasMethods(window.Element && window.Element.prototype, ['setHTML']) },
         // 与 WebUSB / Web Bluetooth 同类的硬件接口：只检查入口方法，不请求设备。
         { name: 'Web Serial API', policy: 'serial', secure: true, desktopOnly: true, test: () => hasMethods(navigator.serial, ['requestPort']) },
         { name: 'WebHID API', policy: 'hid', secure: true, desktopOnly: true, test: () => hasMethods(navigator.hid, ['requestDevice']) }
