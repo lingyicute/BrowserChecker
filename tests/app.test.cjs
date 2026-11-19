@@ -42,21 +42,21 @@ function harness() {
         listeners.get(name).add(fn);
       },
       removeEventListener: (name, fn) => listeners.get(name)?.delete(fn),
-      querySelector: () => ({ classList: { add() {} } }),
+      getElementById: id => id === 'app' ? { hidden: true } : null,
       createElement: () => ({ getContext: () => null, canPlayType: () => '' })
     },
     Vue: {
       ref: value => ({ value }),
       computed: getter => ({ get value() { return getter(); } }),
       onMounted: fn => { mounted = fn; },
-      createApp: options => ({ mount() { state = options.setup(); } })
+      createApp: options => ({ config: {}, mount() { state = options.setup(); } })
     }
   };
   context.window = {
     isSecureContext: true,
     matchMedia: () => ({ matches: false }),
     localStorage: storage(), sessionStorage: storage(),
-    CSS: context.CSS, Promise
+    CSS: context.CSS, Promise, browserCheckerRender() {}
   };
   // 仅在测试 VM 中暴露闭包，不增加生产脚本的公共 API。
   const instrumented = source.replace('    return {\n      userAgent,', `
@@ -95,7 +95,7 @@ test('browser policy and warning template remain stable', () => {
   const hash = text => createHash('sha256').update(text).digest('hex');
   const policy = source.slice(source.indexOf('    // 检测浏览器类型和版本'), source.indexOf('    // 收尾'));
   assert.equal(hash(policy), lock.policySha256);
-  const html = fs.readFileSync(path.join(rootDir, 'index.html'), 'utf8');
+  const html = fs.readFileSync(path.join(rootDir, 'templates', 'app.html'), 'utf8');
   const warning = html.slice(html.indexOf('      <!-- 国产/套壳浏览器警告块 -->'), html.indexOf('      <!-- 内核版本及建议块 -->'));
   assert.equal(hash(warning), lock.warningSha256);
 });

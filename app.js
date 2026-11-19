@@ -1,9 +1,8 @@
 const { createApp, ref, computed, onMounted } = Vue;
+if (typeof window.browserCheckerRender !== 'function') throw new Error('缺少预编译的检测页面模板');
 
 const app = createApp({
-  // 本页模板没有自定义元素。避免编译器自动调用受限的 customElements.get，
-  // 否则某个待检测 API 不可用会在挂载前使整页崩溃。
-  compilerOptions: { isCustomElement: () => false },
+  render: window.browserCheckerRender,
   setup() {
     // 基础数据
     const userAgent = ref('');
@@ -447,27 +446,13 @@ const app = createApp({
       console.log('[浏览器检测] - 用户代理:', navigator.userAgent);
 
       const features = [
-        { name: 'ES6 支持', test: () => {
-          try {
-            new Function('() => {}; let x = 1; const y = 2;');
-            return true;
-          } catch (e) {
-            // 被 CSP 禁止 eval 时会抛出 EvalError，此时本脚本自身（使用了箭头函数/const）能运行即说明支持
-            return e instanceof EvalError;
-          }
-        }},
+        // 本脚本能执行就已经证明了所用的 ES6 和 async/await 语法，无需 eval。
+        { name: 'ES6 支持', test: () => true },
         { name: 'Fetch API', test: () => typeof window.fetch === 'function' },
         { name: 'Promise', test: () => typeof window.Promise === 'function' },
         { name: 'Service Worker', secure: true, siteOrigin: true, test: () => hasMethods(navigator.serviceWorker, ['register']) },
         { name: 'WebAssembly', test: () => hasMethods(window.WebAssembly, ['compile', 'instantiate']) },
-        { name: 'Async/Await', test: () => {
-          try {
-            new Function('async () => { await Promise.resolve(); }');
-            return true;
-          } catch (e) {
-            return e instanceof EvalError;
-          }
-        }},
+        { name: 'Async/Await', test: () => true },
         { name: 'Intersection Observer', test: () => typeof window.IntersectionObserver === 'function' },
         { name: 'Web Animation API', test: () => typeof HTMLElement.prototype.animate === 'function' },
         { name: 'CSS Grid', test: () => supportsCSS('display', 'grid') },
@@ -931,5 +916,15 @@ const app = createApp({
   }
 });
 
-// 挂载Vue应用
-app.mount('#app');
+// 让未处理的渲染异常到达启动守卫，不把空白页标记为成功。
+app.config.throwUnhandledErrorInProduction = true;
+const root = document.getElementById('app');
+app.mount(root);
+if (window.browserCheckerStartup) {
+  window.browserCheckerStartup.mounted();
+} else {
+  // 启动守卫本身被单独禁用时，若 Vue 和应用仍能运行就显示结果。
+  root.hidden = false;
+  const fallback = document.getElementById('startup-error');
+  if (fallback) fallback.hidden = true;
+}

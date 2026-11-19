@@ -34,6 +34,8 @@ test('test server rejects inherited property names and non-public paths without 
     assert.equal(request(url).status, 404, url);
   }
   assert.equal(request('/').status, 200);
+  assert.equal(request('/render.js').headers['Content-Type'], 'application/javascript; charset=utf-8');
+  assert.equal(request('/templates/app.html').status, 404);
 });
 
 test('test server handles malformed URL input without terminating the process', () => {
@@ -64,5 +66,6 @@ test('test server preserves the CSP and permissions regression fixtures', () => 
   const request = serverHarness();
   assert.equal(request('/?csp=images').headers['Content-Security-Policy'], "img-src 'none'");
   assert.match(request('/?csp=strict').headers['Content-Security-Policy'], /script-src/);
+  assert.equal(request('/?csp=no-scripts').headers['Content-Security-Policy'], "script-src 'none'");
   assert.match(request('/?permissions=deny').headers['Permissions-Policy'], /geolocation=\(\)/);
 });

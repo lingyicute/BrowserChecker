@@ -3,7 +3,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
 const rootDir = path.join(__dirname, '..');
-const vueURL = 'https://cdn.jsdelivr.net/npm/vue@3.5.44/dist/vue.global.prod.js';
+const vueURL = 'https://cdn.jsdelivr.net/npm/vue@3.5.44/dist/vue.runtime.global.prod.js';
 const feature = (page, name) => page.locator('.detail-item').filter({ has: page.locator('.detail-name', { hasText: name }) });
 
 // Playwright 自带的 Chromium 版本落后于应用的 Stable 基线，会触发版本扣分，
@@ -22,7 +22,7 @@ test.beforeEach(async ({ page }) => {
   }, latestChromium);
   // 使用锁定版本的同一份 npm 发布文件，测试不依赖外网，但仍由浏览器验证 SRI。
   await page.route(vueURL, route => route.fulfill({
-    path: require.resolve('vue/dist/vue.global.prod.js'),
+    path: require.resolve('vue/dist/vue.runtime.global.prod.js'),
     contentType: 'application/javascript',
     headers: { 'Access-Control-Allow-Origin': '*' }
   }));
@@ -31,7 +31,7 @@ test.beforeEach(async ({ page }) => {
 async function ready(page, url = '/') {
   await page.goto(url);
   await expect(page.locator('.container')).toHaveClass(/content-loaded/);
-  await expect(page.locator('.loading-overlay')).toHaveCount(0);
+  await expect(page.locator('.loading-overlay:visible')).toHaveCount(0);
 }
 
 test('complete detection, decode real image samples, and show consistent statistics', async ({ page }) => {
@@ -80,13 +80,13 @@ test('initialization exceptions end loading without fabricated scores', async ({
   await expect(page.locator('.block-features')).toHaveCount(0);
 });
 
-for (const target of ['vue', 'app']) {
+for (const target of ['vue', 'render', 'app']) {
   test(`${target} resource failure shows an actionable startup error`, async ({ page }) => {
-    await page.route(target === 'vue' ? vueURL : '**/app.js', route => route.abort());
+    await page.route(target === 'vue' ? vueURL : `**/${target}.js`, route => route.abort());
     await page.goto('/');
     await expect(page.locator('#startup-error')).toBeVisible();
     await expect(page.locator('#startup-error a')).toHaveText('刷新重试');
-    await expect(page.locator('.container')).not.toBeVisible();
+    await expect(page.locator('#app')).toBeHidden();
   });
 }
 
@@ -154,28 +154,69 @@ test('direct file access still works and skips origin-dependent APIs', async ({ 
   }
 });
 
-test('disabled JavaScript gets an explicit message, not raw template content', async ({ browser }) => {
-  const context = await browser.newContext({ javaScriptEnabled: false });
-  const page = await context.newPage();
-  await page.goto('http://127.0.0.1:4173');
-  await expect(page.locator('noscript .startup-error')).toBeVisible();
-  await expect(page.locator('.container')).not.toBeVisible();
-  await context.close();
+test('disabled JavaScript gets a static message without unrendered results', async ({ browser, baseURL }) => {
+  const context = await browser.newContext({ javaScriptEnabled: false, baseURL });
+  try {
+    const page = await context.newPage();
+    await page.goto('/');
+    await expect(page.locator('#startup-error')).toContainText('JavaScript');
+    await expect(page.locator('#startup-error')).toBeVisible();
+    await expect(page.locator('#startup-loading')).toBeHidden();
+    await expect(page.locator('#app')).toBeHidden();
+  } finally { await context.close(); }
 });
 
-test('strict CSP unsupported by the runtime compiler produces a startup message', async ({ page }) => {
-  await page.clock.install();
-  await page.goto('/?csp=strict');
-  await page.clock.fastForward(16000);
+test('strict CSP without unsafe-eval still runs all capability probes', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.addInitScript(() => {
+    window.scriptViolations = [];
+    document.addEventListener('securitypolicyviolation', event => {
+      if (event.effectiveDirective.startsWith('script-src')) window.scriptViolations.push(event.blockedURI);
+    });
+  });
+  await ready(page, '/?csp=strict');
+  for (const name of ['ES6 支持', 'Async/Await']) {
+    await expect(feature(page, name).locator('.detail-status')).toHaveText('支持');
+  }
+  await expect(page.locator('#startup-error')).toBeHidden();
+  expect(errors).toEqual([]);
+  expect(await page.evaluate(() => window.scriptViolations)).toEqual([]);
+});
+
+test('a CSP blocking every script still leaves an actionable fallback', async ({ page }) => {
+  await page.goto('/?csp=no-scripts');
   await expect(page.locator('#startup-error')).toBeVisible();
+  await expect(page.locator('#startup-error a')).toHaveText('刷新重试');
+  await expect(page.locator('#startup-loading')).toBeHidden();
+  await expect(page.locator('#app')).toBeHidden();
+});
+
+test('when only the watchdog is blocked a working app can still show results', async ({ page }) => {
+  await page.route('**/startup.js', route => route.abort());
+  await ready(page);
+  await expect(page.locator('#startup-error')).toBeHidden();
+});
+
+test('a render exception cannot masquerade as successful startup', async ({ page }) => {
+  await page.route('**/render.js', route => route.fulfill({
+    body: 'window.browserCheckerRender = () => { throw new Error("test render failure"); };',
+    contentType: 'application/javascript'
+  }));
+  await page.goto('/');
+  await expect(page.locator('#startup-error')).toBeVisible();
+  await expect(page.locator('#app')).toBeHidden();
 });
 
 test('an empty application script is caught by the startup timeout', async ({ page }) => {
   await page.clock.install();
   await page.route('**/app.js', route => route.fulfill({ body: '', contentType: 'application/javascript' }));
   await page.goto('/');
+  await expect(page.locator('#startup-loading')).toBeVisible();
+  await expect(page.locator('.container')).toHaveCount(0);
   await page.clock.fastForward(16000);
   await expect(page.locator('#startup-error')).toBeVisible();
+  await expect(page.locator('#startup-loading')).toBeHidden();
 });
 
 test('a late successful startup clears a previous timeout message', async ({ page }) => {
@@ -194,7 +235,7 @@ test('a late successful startup clears a previous timeout message', async ({ pag
 
 test('real insecure HTTP origin skips APIs requiring a secure context', async ({ page }) => {
   const files = Object.assign(Object.create(null), {
-    '/': 'index.html', '/style.css': 'style.css', '/startup.js': 'startup.js', '/app.js': 'app.js'
+    '/': 'index.html', '/style.css': 'style.css', '/startup.js': 'startup.js', '/render.js': 'render.js', '/app.js': 'app.js'
   });
   await page.route('http://browserchecker.test/**', route => {
     const pathname = new URL(route.request().url()).pathname;
@@ -477,7 +518,7 @@ test('disabling CSS animations without reduced-motion leaves all completed conte
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.goto('/');
   await page.addStyleTag({ content: '*, *::before, *::after { animation: none !important; }' });
-  await expect(page.locator('.loading-overlay')).toHaveCount(0);
+  await expect(page.locator('.loading-overlay:visible')).toHaveCount(0);
   for (const selector of ['.block-score', '.block-engine', '.block-features', '.block-details', '.detail-item']) {
     const opacities = await page.locator(selector).evaluateAll(elements => elements.map(el => getComputedStyle(el).opacity));
     expect(opacities.length).toBeGreaterThan(0);
@@ -486,7 +527,7 @@ test('disabling CSS animations without reduced-motion leaves all completed conte
 });
 
 for (const mode of ['getter', 'method']) {
-  test(`customElements ${mode} restrictions cannot crash template compilation`, async ({ page }) => {
+  test(`customElements ${mode} restrictions cannot crash precompiled template rendering`, async ({ page }) => {
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.addInitScript(mode => {

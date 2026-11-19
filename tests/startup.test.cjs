@@ -1,119 +1,106 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const path = require('node:path');
 const vm = require('node:vm');
 
-const source = fs.readFileSync('startup.js', 'utf8');
+const source = fs.readFileSync(path.join(__dirname, '..', 'startup.js'), 'utf8');
 
-function startupHarness({ withDom = true, scripts = {} } = {}) {
-  const errorEl = { hidden: true };
-  const classes = new Set();
-  const winListeners = new Map();
-  const docListeners = new Map();
+function startupHarness({ withDom = true } = {}) {
+  const fallback = { hidden: false };
+  const loader = { hidden: true };
+  const app = { hidden: true };
+  const scripts = {
+    'vue-script': { src: 'https://cdn.example/vue.runtime.global.prod.js' },
+    'render-script': { src: 'file:///offline/render-renamed.js' },
+    'app-script': { src: 'file:///offline/checker-main.js' }
+  };
+  const elements = { 'startup-error': fallback, 'startup-loading': loader, app, ...scripts };
   const timers = new Map();
+  const listeners = new Set();
   let nextTimer = 0;
-
-  const add = (map) => (name, fn) => {
-    if (!map.has(name)) map.set(name, new Set());
-    map.get(name).add(fn);
-  };
-  const remove = (map) => (name, fn) => map.get(name)?.delete(fn);
-
   const window = {
-    addEventListener: add(winListeners),
-    removeEventListener: remove(winListeners)
+    addEventListener(name, fn, capture) {
+      assert.equal(name, 'error');
+      assert.equal(capture, true);
+      listeners.add(fn);
+    },
+    removeEventListener(name, fn, capture) {
+      assert.equal(name, 'error');
+      assert.equal(capture, true);
+      listeners.delete(fn);
+    }
   };
-  const document = {
-    body: withDom ? { classList: { add: c => classes.add(c), remove: c => classes.delete(c) } } : null,
-    getElementById: id => (withDom && id === 'startup-error' ? errorEl : (withDom && scripts[id]) || null),
-    addEventListener: add(docListeners),
-    removeEventListener: remove(docListeners)
-  };
-  const context = {
+  vm.runInNewContext(source, {
     window,
-    document,
+    document: { getElementById: id => withDom ? elements[id] || null : null },
     setTimeout: (fn, delay) => { const id = ++nextTimer; timers.set(id, { fn, delay }); return id; },
     clearTimeout: id => timers.delete(id)
-  };
-
-  vm.runInNewContext(source, context);
+  });
   return {
-    errorEl,
-    classes,
-    timers,
-    winListeners,
-    docListeners,
+    fallback, loader, app, scripts, timers, listeners,
+    mounted: () => window.browserCheckerStartup.mounted(),
     complete: () => window.browserCheckerStartup.complete(),
-    emitWindowError: event => { for (const fn of winListeners.get('error') || []) fn(event); },
-    emitCsp: event => { for (const fn of docListeners.get('securitypolicyviolation') || []) fn(event); }
+    timeout: () => [...timers.values()].forEach(timer => timer.fn()),
+    emitError: event => { for (const fn of listeners) fn(event); }
   };
 }
 
-test('startup guard fails immediately on enforced script-src eval CSP violation', () => {
+test('startup loader yields to the app on mount and completion releases the watchdog', () => {
   const h = startupHarness();
-  h.emitCsp({ disposition: 'report', effectiveDirective: 'script-src', blockedURI: 'eval' });
-  h.emitCsp({ disposition: 'enforce', effectiveDirective: 'img-src', blockedURI: 'data' });
-  assert.equal(h.errorEl.hidden, true);
-  assert.equal(h.classes.has('startup-failed'), false);
-
-  h.emitCsp({ disposition: 'enforce', effectiveDirective: 'script-src', blockedURI: 'eval' });
-  assert.equal(h.errorEl.hidden, false);
-  assert.equal(h.classes.has('startup-failed'), true);
-  assert.equal(h.timers.size, 0);
-});
-
-test('startup guard matches script targets and relative or absolute filenames', () => {
-  for (const event of [
-    { target: { id: 'vue-script' } },
-    { target: { id: 'app-script' } },
-    { filename: 'app.js' },
-    { filename: 'https://example.com/vue.global.prod.js?v=1' }
-  ]) {
-    const h = startupHarness();
-    h.emitWindowError(event);
-    assert.equal(h.errorEl.hidden, false);
-    assert.equal(h.classes.has('startup-failed'), true);
-  }
-});
-
-test('startup completion clears errors, timers, listeners and handles missing DOM nodes', () => {
-  const h = startupHarness();
-  for (const [, timer] of [...h.timers]) timer.fn();
-  assert.equal(h.errorEl.hidden, false);
+  assert.equal(h.fallback.hidden, true);
+  assert.equal(h.loader.hidden, false);
+  assert.equal(h.app.hidden, true);
+  assert.equal([...h.timers.values()][0].delay, 15000);
+  h.mounted();
+  assert.equal(h.loader.hidden, true);
+  assert.equal(h.app.hidden, false);
+  assert.equal(h.timers.size, 1);
   h.complete();
-  assert.equal(h.errorEl.hidden, true);
-  assert.equal(h.classes.has('startup-failed'), false);
+  assert.equal(h.fallback.hidden, true);
   assert.equal(h.timers.size, 0);
-  assert.equal(h.winListeners.get('error').size, 0);
-  assert.equal(h.docListeners.get('securitypolicyviolation').size, 0);
-
-  const missingDom = startupHarness({ withDom: false });
-  assert.doesNotThrow(() => missingDom.emitWindowError({ target: { id: 'app-script' } }));
-  assert.doesNotThrow(() => missingDom.complete());
+  assert.equal(h.listeners.size, 0);
 });
 
-test('startup guard recognises renamed offline dependencies by the script tag src', () => {
-  const scripts = {
-    'vue-script': { id: 'vue-script', src: 'file:///opt/offline/vue-local.js' },
-    'app-script': { id: 'app-script', src: 'file:///opt/offline/checker-main.js' }
-  };
-  for (const filename of ['file:///opt/offline/vue-local.js', 'file:///opt/offline/checker-main.js']) {
-    const h = startupHarness({ scripts });
-    h.emitWindowError({ filename });
-    assert.equal(h.errorEl.hidden, false);
-    assert.equal(h.classes.has('startup-failed'), true);
-    assert.equal(h.timers.size, 0);
+test('startup errors match actual script targets and URLs, including renamed offline files', () => {
+  for (const id of ['vue-script', 'render-script', 'app-script']) {
+    for (const byTarget of [false, true]) {
+      const h = startupHarness();
+      const script = h.scripts[id];
+      h.emitError(byTarget ? { target: script } : { filename: script.src });
+      assert.equal(h.fallback.hidden, false);
+      assert.equal(h.loader.hidden, true);
+      assert.equal(h.app.hidden, true);
+      assert.equal(h.timers.size, 0);
+      assert.equal(h.listeners.size, 0);
+    }
   }
+});
 
-  // 无关扩展脚本、空文件名、空 src 与畸形事件都不能误报启动失败。
-  const h = startupHarness({ scripts: { ...scripts, 'app-script': { id: 'app-script', src: '' } } });
-  for (const event of [
-    { filename: 'chrome-extension://abc/content.js' },
-    { filename: '' },
-    { filename: undefined },
-    {},
-    undefined
-  ]) assert.doesNotThrow(() => h.emitWindowError(event));
-  assert.equal(h.errorEl.hidden, true);
-  assert.equal(h.classes.has('startup-failed'), false);
+test('same-named extension scripts and malformed error events do not hide the checker', () => {
+  const h = startupHarness();
+  for (const event of [undefined, {}, { filename: '' }, { filename: 'chrome-extension://abc/app.js' },
+    { filename: 'https://other.example/vue.runtime.global.prod.js' }, { target: { id: 'app-script' } }]) {
+    assert.doesNotThrow(() => h.emitError(event));
+  }
+  assert.equal(h.fallback.hidden, true);
+  assert.equal(h.loader.hidden, false);
+  assert.equal(h.timers.size, 1);
+});
+
+test('late completion restores results after timeout; missing DOM nodes are harmless', () => {
+  const h = startupHarness();
+  h.mounted();
+  h.timeout();
+  assert.equal(h.fallback.hidden, false);
+  assert.equal(h.app.hidden, true);
+  h.mounted();
+  assert.equal(h.app.hidden, true);
+  h.complete();
+  assert.equal(h.fallback.hidden, true);
+  assert.equal(h.loader.hidden, true);
+  assert.equal(h.app.hidden, false);
+  const noDom = startupHarness({ withDom: false });
+  assert.doesNotThrow(() => noDom.timeout());
+  assert.doesNotThrow(() => noDom.complete());
 });

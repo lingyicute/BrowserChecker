@@ -27,7 +27,7 @@
 
 点开页面，它就会：识别你的浏览器类型与内核版本，检查 105 项现代 Web 能力，分辨国产浏览器、套壳浏览器和应用内 WebView，并把结果整理成一个 0–100 的分数和几条可读的建议。
 
-这个项目仍然是一个**无需构建的静态网站**：`index.html`、`style.css`、`app.js` 和 `startup.js` 就是运行时的全部。没有后端、没有账号、没有追踪，部署到任意静态托管即可。你也可以直接打开 `index.html`，或访问官方站点 [test.92li.uk](https://test.92li.uk)。
+这个项目仍然是一个**无需构建的静态网站**：`index.html`、`style.css`、`app.js`、`startup.js` 和已生成的 `render.js` 是运行时文件。没有后端、没有账号、没有追踪，部署到任意静态托管即可。你也可以直接打开 `index.html`，或访问官方站点 [test.92li.uk](https://test.92li.uk)。
 
 <br>
 
@@ -137,6 +137,8 @@ python3 -m http.server 8000
 - `style.css` — 样式表
 - `app.js` — Vue.js 应用与检测逻辑
 - `startup.js` — 不依赖 Vue 的启动失败提示与超时保护
+- `templates/app.html` — Vue 页面模板源文件
+- `scripts/compile-template.cjs` / `render.js` — 模板生成脚本与提交到仓库的产物
 - `tests/` — 单元测试、跨浏览器回归测试及策略锁定基线
 - `playwright.config.cjs` — Chromium / Firefox / WebKit 测试配置
 
@@ -144,7 +146,7 @@ python3 -m http.server 8000
 
 ## 🔨 开发与测试
 
-页面是无需构建的静态网站；Node.js / npm 仅用于开发测试。
+页面无需构建即可访问；Node.js / npm 仅用于开发。修改 `templates/app.html` 后执行 `node scripts/compile-template.cjs` 并一并提交 `render.js`，测试会校验产物。
 
 ```sh
 # Node.js 20+（CI 使用 22）
@@ -158,7 +160,7 @@ npm run test:browser
 
 回归覆盖还包括不可调用的 API 占位符、安全策略拒绝、受限的 `customElements`、禁用 CSS 动画，以及国产／套壳浏览器的完整警告与扣分。测试服务器另有畸形 URL、静态文件白名单、请求方法和读取错误处理的单元测试。
 
-Pull Request 会自动运行回归测试；主分支 Pages 部署也必须先通过相同测试。部署只发布 `index.html`、`style.css`、`app.js`、`startup.js`，不发布测试及 npm 依赖。
+Pull Request 会自动运行回归测试；主分支 Pages 部署也必须先通过相同测试。部署只发布 `index.html`、`style.css`、`app.js`、`startup.js`、`render.js`，不发布模板源、测试及 npm 依赖。
 
 <br>
 
@@ -167,7 +169,7 @@ Pull Request 会自动运行回归测试；主分支 Pages 部署也必须先通
 - 分数是本站规则下的特性可用性评估，不是性能基准测试，也不是完整安全审计；支持率只描述本页实际评估的项目，不能外推为网站兼容率。API 存在不等于已经授权、具有硬件支持，或所有调用都能成功；检测不会申请摄像头、定位、蓝牙等权限。
 - 浏览器识别依赖 User-Agent。品牌和版本可被伪装，iOS 上的 Firefox、Chrome、Edge 和 Opera 不因兼容性标记计为 Chromium；通用 Android WebView 单独显示，不触发指定套壳品牌的额外扣分。
 - 运行时使用固定版本的 Vue 生产构建并启用 SRI。首次打开（包括 `file://`）仍需网络访问 CDN。
-- 当前使用 Vue 的 DOM 模板运行时编译器，严格禁止 `unsafe-eval` 的 CSP 无法启动完整页面。
+- 运行时使用预编译模板，不要求 CSP 开启 `unsafe-eval`。托管方仍需允许所需脚本、样式和 Vue CDN；全部脚本被拦截时会显示静态提示。
 - 显示模式查询、可选 Client Hints 或分数动画被禁用时会降级，不会导致整个检测失败。后台页面和减少动态效果模式直接提供最终分数。
 - 详细结果区域可通过 Tab 聚焦，再用方向键、Page Down / End 等按键滚动；窄屏下特性名称自动换行。
 

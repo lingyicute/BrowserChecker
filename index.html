@@ -8,119 +8,23 @@
   <meta name="description" content="检查你的浏览器支持多少现代 Web 能力，识别内核版本与国产、套壳浏览器，并给出 0–100 的评分。">
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="style.css">
-  <noscript><style>#app { display: none; }</style></noscript>
 </head>
 <body>
-  <noscript><p class="startup-error" role="alert">此页面需要 JavaScript 才能检测浏览器，请启用后刷新。</p></noscript>
-  <p id="startup-error" class="startup-error" role="alert" hidden>
-    检测程序未能正常启动。请检查网络、脚本拦截设置或尝试更新浏览器，然后<a href="">刷新重试</a>。
+  <p id="startup-error" class="startup-error" role="alert">
+    若检测程序没有启动，请确认 JavaScript 已启用、网络正常且脚本未被拦截，或尝试更新浏览器，然后<a href="">刷新重试</a>。
   </p>
-  <div id="app">
-    <!-- 加载动画覆盖层 -->
-    <div class="loading-overlay" v-if="isLoading" :class="{ 'fade-out': isFadingOut }" role="status" aria-live="polite">
-      <div class="loading-content">
-        <div class="loader"></div>
-        <div class="loading-text">正在检测浏览器特性...</div>
-      </div>
-    </div>
-
-    <div class="container" v-cloak :class="{ 'content-loaded': !isLoading }">
-      <!-- 分数部分 -->
-      <div class="score-wrapper">
-        <div class="score-section block-item block-score">
-          <div class="score-container">
-            <div class="score" :class="scoreColorClass">{{ detectionError ? '—' : displayScore }}</div>
-            <div class="score-text">{{ detectionError ? '检测失败' : '浏览器得分' }}</div>
-          </div>
-          <div class="animation-container" aria-hidden="true">
-            <div class="circle-loader" :style="{ background: scoreColorGradient }"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 国产/套壳浏览器警告块 -->
-      <div v-if="browserType === '国产浏览器' || browserType === '套壳浏览器'"
-           class="block-item block-warning">
-        <div class="warning-icon">⚠️</div>
-        <div class="warning-content">
-          <h3>检测到{{ browserType }}</h3>
-          <p>{{ switchSuggestion }}</p>
-        </div>
-      </div>
-
-      <!-- 内核版本及建议块 -->
-      <div class="block-item block-engine">
-        <h3>浏览器内核信息</h3>
-        <div class="browser-info">
-          <p v-if="!detectionError"><strong>浏览器类型：</strong>{{ browserType }}</p>
-          <p v-if="!detectionError && isChromeEngine"><strong>Chromium 内核版本：</strong>{{ chromeVersion }}</p>
-          <div class="engine-recommendation">
-            <p>{{ recommendation }}</p>
-          </div>
-          <p v-if="!detectionError" class="user-agent"><strong>浏览器 User-Agent：</strong>{{ userAgent }}</p>
-        </div>
-      </div>
-
-      <!-- 现代特性支持情况及建议块 -->
-      <div v-if="!detectionError" class="block-item block-features">
-        <h3>现代 Web 特性支持情况</h3>
-        <div class="features-summary">
-          <div class="feature-stats">
-            <div class="stat-item">
-              <div class="stat-value">{{ getSupportedFeaturesCount() }}</div>
-              <div class="stat-label">支持特性</div>
-            </div>
-            <div class="stat-item">
-              <div class="stat-value">{{ getUnsupportedFeaturesCount() }}</div>
-              <div class="stat-label">不支持特性</div>
-            </div>
-            <div class="stat-item">
-              <div class="stat-value">{{ getSupportRate() }}%</div>
-              <div class="stat-label">支持率</div>
-            </div>
-            <div class="stat-item" v-if="getSkippedFeaturesCount() > 0">
-              <div class="stat-value">{{ getSkippedFeaturesCount() }}</div>
-              <div class="stat-label">已跳过</div>
-            </div>
-          </div>
-          <div v-if="isMobileDevice" class="mobile-notice">
-            <p>⚙️ 检测到{{ isIOSDevice ? ' iOS ' : '' }}移动设备，若平台未提供某些能力，相应检测项将跳过，不计入评分</p>
-          </div>
-          <div v-if="isFileOrigin" class="mobile-notice notice-local-file">
-            <p>📄 当前页面通过 file:// 本地打开，需要网站来源的 API 已跳过；其他 API 按当前上下文检测。请通过 HTTPS 或 localhost 访问以获得完整结果</p>
-          </div>
-          <div v-if="!isSecureContext && !isFileOrigin" class="mobile-notice notice-insecure">
-            <p>🔒 当前页面不在安全上下文中，依赖安全上下文的 API 已跳过。请通过 HTTPS 或 localhost 访问以获得完整结果</p>
-          </div>
-          <div v-if="skipNotices.length" class="skip-notices">
-            <span class="skip-notice-item" v-for="notice in skipNotices" :key="notice.reason">
-              {{ notice.reason }} × {{ notice.count }}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      <!-- 详细检测结果块 -->
-      <div v-if="!detectionError" class="block-item block-details">
-        <h3 id="details-heading">详细检测结果</h3>
-        <div class="detail-items-container" tabindex="0" role="region" aria-labelledby="details-heading">
-          <div class="detail-item" :class="{ 'detail-item-skipped': item.skipped }" v-for="(item, index) in detectionResults" :key="item.name" :style="{ animationDelay: `${Math.min(index, 12) * 0.03}s` }">
-            <div class="detail-name">
-              {{ item.name }}
-              <span v-if="item.skipped" class="detail-reason">{{ item.reason }}</span>
-            </div>
-            <div class="detail-status" :class="{ supported: item.supported, skipped: item.skipped }">
-              {{ getStatusText(item) }}
-            </div>
-          </div>
-        </div>
-      </div>
+  <div id="startup-loading" class="loading-overlay" role="status" hidden>
+    <div class="loading-content">
+      <div class="loader" aria-hidden="true"></div>
+      <div class="loading-text">正在加载检测程序...</div>
     </div>
   </div>
+  <main id="app" hidden></main>
 
   <script src="startup.js"></script>
-  <script id="vue-script" defer src="https://cdn.jsdelivr.net/npm/vue@3.5.44/dist/vue.global.prod.js"
-          integrity="sha384-tORx0bXmMnTC28EYQe1coaGZKSQupXQEYDBNex8xkzJ9iqUoNy9Y+VFBhVxi4kUr" crossorigin="anonymous"></script>
+  <script id="vue-script" defer src="https://cdn.jsdelivr.net/npm/vue@3.5.44/dist/vue.runtime.global.prod.js"
+          integrity="sha384-b/AjbaAXeH6ypBqFEi7YTDZEXY0MhY7emG1a6rRRZKjOzGUM88lZ9eHxgkRgUNBR" crossorigin="anonymous"></script>
+  <script id="render-script" defer src="render.js"></script>
   <script id="app-script" defer src="app.js"></script>
 </body>
 </html>
