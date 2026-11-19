@@ -654,12 +654,15 @@ const app = createApp({
 
     // 与当前 Chrome Stable 主版本对齐；Chrome 从 2026 年起加快发布节奏，
     // 更新此基线时同步调整下方推荐阈值和回归测试。
-    const latestChromiumVersion = 157;
+    const latestChromiumVersion = 158;
 
     // 检测浏览器类型和版本
     const detectBrowserInfo = () => {
       const ua = navigator.userAgent;
       userAgent.value = ua;
+      isChromeEngine.value = false;
+      chromeVersion.value = 0;
+      switchSuggestion.value = '';
 
       console.log('[浏览器检测] - 开始分析浏览器类型和版本');
 
@@ -672,26 +675,34 @@ const app = createApp({
       } else if (isChinaBrowser) {
         browserType.value = '国产浏览器';
         totalScore.value -= 30;
-      } else if (/firefox|fxios/i.test(ua)) {
+      } else if (/\b(?:firefox|fxios)\//i.test(ua)) {
         browserType.value = 'Firefox';
-      } else if (/edg|edge/i.test(ua)) {
+      } else if (/\bedgios\//i.test(ua)) {
+        browserType.value = 'Edge（iOS）';
+      } else if (/\b(?:edg|edga|edge)\//i.test(ua)) {
         browserType.value = 'Edge';
-      } else if (/opera|opr/i.test(ua)) {
+      } else if (/\b(?:opios|opt)\//i.test(ua)) {
+        browserType.value = 'Opera（iOS）';
+      } else if (/\b(?:opera|opr)\//i.test(ua)) {
         browserType.value = 'Opera';
-      } else if (/crios/i.test(ua)) {
-        // iOS 上的 Chrome 使用系统 WebKit 而非 Chromium 内核，
-        // 不能标为 Chromium，否则与下方“未使用 Chromium 内核”的建议自相矛盾。
+      } else if (/\bcrios\//i.test(ua)) {
         browserType.value = 'Chrome（iOS）';
-      } else if (/safari/i.test(ua) && !/chrome/i.test(ua)) {
-        browserType.value = 'Safari';
-      } else if (/chrome/i.test(ua)) {
+      } else if (/\bandroid\b/i.test(ua) && /;\s*wv(?=[;)])/i.test(ua)) {
+        // 通用 Android WebView 是运行形态，不等同于上方指定的套壳品牌扣分规则。
+        browserType.value = 'Android WebView';
+      } else if (/\b(?:chrome|chromium|headlesschrome)\/\d+\b/i.test(ua)) {
         browserType.value = 'Chromium';
+      } else if (/\bsafari\//i.test(ua)) {
+        browserType.value = 'Safari';
       } else {
         browserType.value = '未知浏览器';
       }
 
-      // 检测Chromium内核版本
-      const chromeMatch = ua.match(/chrome\/(\d+)/i);
+      // EdgeHTML 与当前已知的 iOS 浏览器可能带兼容性标记，不能据此认定 Chromium。
+      const hasNonChromiumToken = /\b(?:edge|crios|edgios|firefox|fxios|opios|opt)\//i.test(ua);
+      const chromeMatch = isChinaBrowser || isWebView
+        ? ua.match(/chrome\/(\d+)/i) // 受保护的浏览器策略沿用原来的匹配范围。
+        : hasNonChromiumToken ? null : ua.match(/\b(?:chrome|chromium|headlesschrome)\/(\d+)\b/i);
       if (chromeMatch && chromeMatch[1]) {
         isChromeEngine.value = true;
         const reportedVersion = parseInt(chromeMatch[1], 10);
@@ -764,6 +775,8 @@ const app = createApp({
             upgradeSuggestion = '你的浏览器内核版本（Chromium ' + version + '）处于最新前沿，能够体验最先进的网络技术。';
           }
         }
+      } else if (browserType.value === '未知浏览器') {
+        upgradeSuggestion = '未能从 User-Agent 确认你的浏览器内核，建议保持浏览器更新。';
       } else {
         upgradeSuggestion = '你的浏览器未使用 Chromium 内核，建议保持更新以获得最佳性能和安全性。';
       }
@@ -777,19 +790,11 @@ const app = createApp({
       }
 
       if (!isFakeVersion) {
-        const supportRate = getSupportRate();
-
-        if (supportRate <= 50) {
-          featureSuggestion = '你的浏览器仅支持 ' + supportRate + '% 的现代 Web 特性，大多数现代网站可能无法正常工作。';
-        } else if (supportRate <= 70) {
-          featureSuggestion = '你的浏览器支持 ' + supportRate + '% 的现代 Web 特性，许多新型网站可能会出现兼容性问题。';
-        } else if (supportRate <= 85) {
-          featureSuggestion = '你的浏览器支持 ' + supportRate + '% 的现代 Web 特性，大部分网站能正常使用，但可能缺少一些新功能。';
-        } else if (supportRate < 95) {
-          featureSuggestion = '你的浏览器支持 ' + supportRate + '% 的现代 Web 特性，能够流畅使用大多数网站。';
-        } else {
-          featureSuggestion = '你的浏览器支持 ' + supportRate + '% 的现代 Web 特性，能够流畅体验几乎所有最新的 Web 功能。';
-        }
+        const { supported, unsupported } = featureStats.value;
+        const evaluated = supported + unsupported;
+        featureSuggestion = evaluated
+          ? `本次评估的 ${evaluated} 项现代 Web 特性中，有 ${supported} 项受支持（${getSupportRate()}%）。`
+          : '本次没有可评估的现代 Web 特性，无法给出支持率。';
       }
 
       if (isFakeVersion) {

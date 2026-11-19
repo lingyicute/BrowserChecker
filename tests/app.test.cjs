@@ -123,10 +123,16 @@ test('protected classification, deduction and disguised-version boundaries (378 
   h.api.detectBrowserInfo();
   assert.equal(h.state.browserType.value, '套壳浏览器');
   assert.equal(h.state.totalScore.value, 30);
+  h.context.navigator.userAgent = 'OPiOS/3.0 QQFooChrome/110.0 Edge/18.0';
+  h.state.totalScore.value = 100;
+  h.api.detectBrowserInfo();
+  assert.equal(h.state.browserType.value, '套壳浏览器');
+  assert.equal(h.state.chromeVersion.value, 110);
+  assert.equal(h.state.totalScore.value, 40);
 });
 
 test('Chromium version score tiers track the current Stable baseline', () => {
-  for (const [version, penalty] of [[109,50],[110,40],[115,40],[126,40],[127,30],[136,30],[137,20],[144,20],[145,10],[151,10],[152,0],[157,0],[158,0]]) {
+  for (const [version, penalty] of [[109,50],[110,40],[127,40],[128,30],[137,30],[138,20],[145,20],[146,10],[152,10],[153,0],[158,0],[159,0]]) {
     const h = harness();
     h.context.navigator.userAgent = `Chrome/${version}.0.0.0`;
     h.api.detectBrowserInfo();
@@ -136,9 +142,9 @@ test('Chromium version score tiers track the current Stable baseline', () => {
 
 test('Chromium upgrade recommendations track the current Stable baseline', () => {
   for (const [version, text] of [
-    [127, '严重过时'], [128, '落后较多'], [142, '落后较多'],
-    [143, '有些落后'], [151, '有些落后'], [152, '较新'],
-    [156, '较新'], [157, '处于最新前沿'], [158, '处于最新前沿']
+    [128, '严重过时'], [129, '落后较多'], [143, '落后较多'],
+    [144, '有些落后'], [152, '有些落后'], [153, '较新'],
+    [157, '较新'], [158, '处于最新前沿'], [159, '处于最新前沿']
   ]) {
     const h = harness();
     h.context.navigator.userAgent = `Chrome/${version}.0.0.0`;
@@ -170,6 +176,39 @@ test('iOS Firefox is not Safari or Chromium', () => {
   assert.equal(h.state.browserType.value, 'Firefox');
   assert.equal(h.state.isChromeEngine.value, false);
   assert.equal(h.state.isIOSDevice.value, true);
+});
+
+test('legacy and mobile engine aliases are separated from Chromium version penalties', () => {
+  for (const [ua, type, major] of [
+    ['Windows NT 10.0 Chrome/42.0 Safari/537.36 Edge/18.19041', 'Edge', 0],
+    ['iPhone AppleWebKit/605.1.15 EdgiOS/157.0 Mobile/15E148 Safari/605.1', 'Edge（iOS）', 0],
+    ['iPhone AppleWebKit/605.1.15 OPiOS/3.3 Mobile/15E148 Safari/605.1', 'Opera（iOS）', 0],
+    ['iPhone AppleWebKit/605.1.15 OPT/4.0 Safari/605.1', 'Opera（iOS）', 0],
+    ['(Linux; Android 15; wv) Chrome/158.0 Mobile Safari/537.36', 'Android WebView', 158],
+    ['Linux Chromium/158.0 Safari/537.36', 'Chromium', 158],
+    ['Linux HeadlessChrome/158.0 Safari/537.36', 'Chromium', 158],
+    ['Windows NT 10.0 Chrome/158.0 Edg/158.0', 'Edge', 158],
+    ['Linux Chrome/158.0 OPR/129.0', 'Opera', 158],
+    ['FakeChrome/25 Edgy/27 NotFirefox/5', '未知浏览器', 0]
+  ]) {
+    const h = harness();
+    h.context.navigator.userAgent = ua;
+    h.api.detectBrowserInfo();
+    assert.equal(h.state.browserType.value, type, ua);
+    assert.equal(h.state.isChromeEngine.value, major > 0, ua);
+    assert.equal(h.state.chromeVersion.value, major, ua);
+    assert.equal(h.state.totalScore.value, 100, ua);
+  }
+});
+
+test('recommendations describe evaluated results without inferring whole-site compatibility', () => {
+  const h = harness();
+  h.state.detectionResults.value = [{ supported: true }, { supported: false }, { skipped: true }];
+  h.api.detectBrowserInfo();
+  assert.match(h.state.recommendation.value, /评估的 2 项.*1 项受支持（50%）/);
+  h.state.detectionResults.value = [];
+  h.api.generateRecommendation();
+  assert.match(h.state.recommendation.value, /无法给出支持率/);
 });
 
 for (const [name, ua, touches, ios, mobile] of [
