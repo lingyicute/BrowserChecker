@@ -332,7 +332,7 @@ test('feature score, sorting, support rate and notice counts exclude skipped ite
   const h = harness();
   await detect(h);
   const items = h.state.detectionResults.value;
-  assert.equal(items.length, 66);
+  assert.equal(items.length, 91);
   const supported = items.filter(i => i.supported).length;
   const unsupported = items.filter(i => !i.supported && !i.skipped).length;
   assert.equal(h.state.totalScore.value, 100 - unsupported * 2);
@@ -378,6 +378,76 @@ test('new feature probes reject incomplete or non-callable API placeholders', as
     assert.equal(find(name).supported, false, name);
     assert.equal(find(name).skipped, false, name);
   }
+});
+
+const newFeatureNames = ['Set 集合运算方法', 'Iterator Helpers', 'RegExp.escape()', 'Float16Array',
+  'Uint8Array Base64 / Hex 编解码', 'Temporal API', 'CSS @scope', 'CSS @starting-style', 'CSS @property',
+  'CSS subgrid', 'CSS text-wrap: balance', 'CSS 锚点定位', 'CSS Custom Highlight API',
+  '声明式 Shadow DOM / setHTMLUnsafe()', 'Invoker Commands（commandfor）', 'Element.moveBefore()', 'scrollend 事件',
+  'URLPattern API', 'Import Maps', 'OffscreenCanvas', 'Web Crypto API', 'WebCodecs API',
+  'Prioritized Task Scheduling（scheduler.postTask）', 'Web Serial API', 'WebHID API'];
+
+test('ES2025+, CSS and platform additions are detected without invoking any interface', async () => {
+  const h = harness();
+  const doNotInvoke = () => { assert.fail('capability probes must not invoke the detected interface'); };
+  const ctor = (proto = {}) => Object.assign(function Ctor() { doNotInvoke(); }, { prototype: proto });
+  const w = h.context.window;
+  h.context.Set = ctor({ union: doNotInvoke, intersection: doNotInvoke, difference: doNotInvoke, isSubsetOf: doNotInvoke });
+  h.context.Iterator = ctor({ map: doNotInvoke, filter: doNotInvoke, take: doNotInvoke, toArray: doNotInvoke });
+  h.context.RegExp = Object.assign(ctor(), { escape: doNotInvoke });
+  h.context.Float16Array = ctor();
+  h.context.Math = Object.assign(Object.create(Math), { f16round: doNotInvoke });
+  h.context.Uint8Array = Object.assign(ctor({ toBase64: doNotInvoke, toHex: doNotInvoke }), { fromBase64: doNotInvoke, fromHex: doNotInvoke });
+  h.context.Temporal = { Now: { instant: doNotInvoke, plainDateISO: doNotInvoke }, PlainDate: ctor() };
+  Object.assign(w, { CSSScopeRule: ctor(), CSSStartingStyleRule: ctor(), CSSPropertyRule: ctor(), Highlight: ctor(),
+    HTMLTemplateElement: ctor({ shadowRootMode: '' }), Element: ctor({ setHTMLUnsafe: doNotInvoke, moveBefore: doNotInvoke }),
+    HTMLButtonElement: ctor({ commandForElement: null }), CommandEvent: ctor(), onscrollend: null,
+    URLPattern: ctor(), OffscreenCanvas: ctor(), VideoDecoder: ctor(), scheduler: { postTask: doNotInvoke },
+    crypto: { getRandomValues: doNotInvoke, randomUUID: doNotInvoke, subtle: { digest: doNotInvoke, encrypt: doNotInvoke } } });
+  Object.assign(h.context.CSS, { registerProperty: doNotInvoke, highlights: { set: doNotInvoke, delete: doNotInvoke } });
+  h.context.HTMLScriptElement.supports = type => type === 'importmap';
+  Object.assign(h.context.navigator, { serial: { requestPort: doNotInvoke }, hid: { requestDevice: doNotInvoke } });
+  const find = await detect(h);
+  for (const name of newFeatureNames) {
+    assert.equal(find(name).supported, true, name);
+    assert.equal(find(name).skipped, false, name);
+  }
+  assert.equal(h.state.detectionResults.value.length, 91);
+});
+
+test('ES2025+, CSS and platform additions reject partial or placeholder interfaces', async () => {
+  const h = harness();
+  const w = h.context.window;
+  h.context.Set = Object.assign(function Set() {}, { prototype: { union: () => {} } });
+  h.context.Iterator = Object.assign(function Iterator() {}, { prototype: { map: () => {}, filter: () => {}, take: () => {} } });
+  h.context.RegExp = { escape: () => {} };
+  h.context.Float16Array = {};
+  h.context.Uint8Array = Object.assign(function Uint8Array() {}, { fromBase64: () => {}, prototype: {} });
+  h.context.Temporal = { Now: {}, PlainDate: function PlainDate() {} };
+  h.context.CSS = w.CSS = { supports: () => false, registerProperty: () => {}, highlights: {} };
+  Object.assign(w, { CSSScopeRule: {}, CSSStartingStyleRule: null, Highlight: function Highlight() {},
+    HTMLTemplateElement: function HTMLTemplateElement() {}, Element: function Element() {},
+    HTMLButtonElement: Object.assign(function HTMLButtonElement() {}, { prototype: { commandForElement: null } }),
+    URLPattern: {}, OffscreenCanvas: undefined, VideoDecoder: null, scheduler: { postTask: {} },
+    crypto: { getRandomValues: () => {}, randomUUID: () => {} } });
+  h.context.HTMLScriptElement.supports = () => false;
+  Object.assign(h.context.navigator, { serial: {}, hid: { requestDevice: null } });
+  const find = await detect(h);
+  for (const name of newFeatureNames) {
+    assert.equal(find(name).supported, false, name);
+    assert.equal(find(name).skipped, false, name);
+  }
+});
+
+test('Web Serial and WebHID are skipped on mobile, Web Crypto and WebCodecs on insecure origins', async () => {
+  const mobile = harness();
+  mobile.context.navigator.userAgent = 'Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/157.0.0.0 Mobile Safari/537.36';
+  const findMobile = await detect(mobile);
+  for (const name of ['Web Serial API', 'WebHID API']) assert.equal(findMobile(name).reason, '移动端不提供此 API');
+  const insecure = harness();
+  insecure.context.window.isSecureContext = false;
+  const findInsecure = await detect(insecure);
+  for (const name of ['Web Crypto API', 'WebCodecs API']) assert.match(findInsecure(name).reason, /安全上下文/);
 });
 
 test('missing requestAnimationFrame does not overwrite the score with 50', () => {
@@ -440,7 +510,7 @@ test('blocked optional environment APIs do not abort detection', async () => {
   h.runTimers(800);
   assert.equal(h.state.detectionError.value, false);
   assert.equal(h.state.isLoading.value, false);
-  assert.equal(h.state.detectionResults.value.length, 66);
+  assert.equal(h.state.detectionResults.value.length, 91);
 });
 
 test('animation exceptions cannot invalidate a completed score', () => {
@@ -658,7 +728,7 @@ for (const property of ['mobile', 'maxTouchPoints', 'standalone']) {
     await pending;
     h.runTimers(800);
     assert.equal(h.state.detectionError.value, false);
-    assert.equal(h.state.detectionResults.value.length, 66);
+    assert.equal(h.state.detectionResults.value.length, 91);
   });
 }
 
@@ -949,7 +1019,7 @@ for (const errorName of ['SecurityError', 'NotAllowedError', 'TypeError']) {
     assert.equal(result.skipped, errorName !== 'TypeError');
     if (result.skipped) assert.match(result.reason, /安全策略|权限/);
     assert.equal(find('Storage API').supported, true);
-    assert.equal(h.state.detectionResults.value.length, 66);
+    assert.equal(h.state.detectionResults.value.length, 91);
   });
 }
 

@@ -555,7 +555,47 @@ const app = createApp({
         { name: 'Intl.Locale 信息 API', test: () => typeof Intl === 'object' && !!Intl &&
           typeof Intl.Locale === 'function' && hasMethods(Intl.Locale.prototype, ['getWeekInfo']) },
         { name: 'CSS field-sizing', test: () => supportsCSS('field-sizing: content') },
-        { name: 'CSS :open 选择器', test: () => supportsCSS('selector(:open)') }
+        { name: 'CSS :open 选择器', test: () => supportsCSS('selector(:open)') },
+        // --- ECMAScript 2025 / 2026 内置能力：只检查接口存在，不执行迭代或解析 ---
+        { name: 'Set 集合运算方法', test: () => typeof Set === 'function' &&
+          hasMethods(Set.prototype, ['union', 'intersection', 'difference', 'isSubsetOf']) },
+        { name: 'Iterator Helpers', test: () => typeof Iterator === 'function' &&
+          hasMethods(Iterator.prototype, ['map', 'filter', 'take', 'toArray']) },
+        { name: 'RegExp.escape()', test: () => typeof RegExp === 'function' && typeof RegExp.escape === 'function' },
+        { name: 'Float16Array', test: () => typeof Float16Array === 'function' && typeof Math.f16round === 'function' },
+        { name: 'Uint8Array Base64 / Hex 编解码', test: () => typeof Uint8Array === 'function' &&
+          hasMethods(Uint8Array, ['fromBase64', 'fromHex']) && hasMethods(Uint8Array.prototype, ['toBase64', 'toHex']) },
+        { name: 'Temporal API', test: () => typeof Temporal === 'object' && !!Temporal &&
+          hasMethods(Temporal.Now, ['instant', 'plainDateISO']) && typeof Temporal.PlainDate === 'function' },
+        // --- Baseline 2024 / 2025 CSS 能力 ---
+        { name: 'CSS @scope', test: () => typeof window.CSSScopeRule === 'function' },
+        { name: 'CSS @starting-style', test: () => typeof window.CSSStartingStyleRule === 'function' },
+        { name: 'CSS @property', test: () => hasMethods(window.CSS, ['registerProperty']) &&
+          typeof window.CSSPropertyRule === 'function' },
+        { name: 'CSS subgrid', test: () => supportsCSS('grid-template-columns: subgrid') },
+        { name: 'CSS text-wrap: balance', test: () => supportsCSS('text-wrap: balance') },
+        { name: 'CSS 锚点定位', test: () => supportsCSS('anchor-name: --a') && supportsCSS('position-anchor: --a') },
+        { name: 'CSS Custom Highlight API', test: () => !!window.CSS &&
+          hasMethods(window.CSS.highlights, ['set', 'delete']) && typeof window.Highlight === 'function' },
+        // --- Baseline 2024 / 2025 Web 平台能力：不创建元素实例、不发起解析或任务 ---
+        { name: '声明式 Shadow DOM / setHTMLUnsafe()', test: () => typeof window.HTMLTemplateElement === 'function' &&
+          'shadowRootMode' in window.HTMLTemplateElement.prototype &&
+          !!window.Element && hasMethods(window.Element.prototype, ['setHTMLUnsafe']) },
+        { name: 'Invoker Commands（commandfor）', test: () => typeof window.HTMLButtonElement === 'function' &&
+          'commandForElement' in window.HTMLButtonElement.prototype && typeof window.CommandEvent === 'function' },
+        { name: 'Element.moveBefore()', test: () => !!window.Element && hasMethods(window.Element.prototype, ['moveBefore']) },
+        { name: 'scrollend 事件', test: () => 'onscrollend' in window },
+        { name: 'URLPattern API', test: () => typeof window.URLPattern === 'function' },
+        { name: 'Import Maps', test: () => typeof HTMLScriptElement !== 'undefined' &&
+          hasMethods(HTMLScriptElement, ['supports']) && !!HTMLScriptElement.supports('importmap') },
+        { name: 'OffscreenCanvas', test: () => typeof window.OffscreenCanvas === 'function' },
+        { name: 'Web Crypto API', secure: true, test: () => hasMethods(window.crypto, ['getRandomValues', 'randomUUID']) &&
+          hasMethods(window.crypto.subtle, ['digest', 'encrypt']) },
+        { name: 'WebCodecs API', secure: true, test: () => typeof window.VideoDecoder === 'function' },
+        { name: 'Prioritized Task Scheduling（scheduler.postTask）', test: () => hasMethods(window.scheduler, ['postTask']) },
+        // 与 WebUSB / Web Bluetooth 同类的硬件接口：只检查入口方法，不请求设备。
+        { name: 'Web Serial API', policy: 'serial', secure: true, desktopOnly: true, test: () => hasMethods(navigator.serial, ['requestPort']) },
+        { name: 'WebHID API', policy: 'hid', secure: true, desktopOnly: true, test: () => hasMethods(navigator.hid, ['requestDevice']) }
       ];
 
       // 检测每项功能并记录结果（支持异步检测）

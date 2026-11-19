@@ -30,5 +30,13 @@ module.exports = [
   { name: 'EyeDropper API', scope: 'window', property: 'EyeDropper' },
   { name: 'ScrollTimeline / ViewTimeline', scope: 'window', property: 'ScrollTimeline', alternate: 'ViewTimeline' },
   { name: 'MediaSession API', scope: 'navigator', property: 'mediaSession', methods: ['setActionHandler'] },
-  { name: 'Credential Management API', scope: 'navigator', property: 'credentials', methods: ['get', 'create'] }
+  { name: 'Credential Management API', scope: 'navigator', property: 'credentials', methods: ['get', 'create'] },
+  { name: 'CSS @scope', scope: 'window', property: 'CSSScopeRule' },
+  { name: 'CSS @starting-style', scope: 'window', property: 'CSSStartingStyleRule' },
+  { name: 'URLPattern API', scope: 'window', property: 'URLPattern' },
+  { name: 'OffscreenCanvas', scope: 'window', property: 'OffscreenCanvas' },
+  { name: 'WebCodecs API', scope: 'window', property: 'VideoDecoder' },
+  { name: 'Prioritized Task Scheduling（scheduler.postTask）', scope: 'window', property: 'scheduler', methods: ['postTask'] },
+  { name: 'Web Serial API', scope: 'navigator', property: 'serial', methods: ['requestPort'] },
+  { name: 'WebHID API', scope: 'navigator', property: 'hid', methods: ['requestDevice'] }
 ];

@@ -25,7 +25,7 @@
 
 ## 📖 Overview
 
-点开页面，它就会：识别你的浏览器类型与内核版本，检查 66 项现代 Web 能力，分辨国产浏览器、套壳浏览器和应用内 WebView，并把结果整理成一个 0–100 的分数和几条可读的建议。
+点开页面，它就会：识别你的浏览器类型与内核版本，检查 91 项现代 Web 能力，分辨国产浏览器、套壳浏览器和应用内 WebView，并把结果整理成一个 0–100 的分数和几条可读的建议。
 
 这个项目仍然是一个**无需构建的静态网站**：`index.html`、`style.css`、`app.js` 和 `startup.js` 就是运行时的全部。没有后端、没有账号、没有追踪，部署到任意静态托管即可。你也可以直接打开 `index.html`，或访问官方站点 [test.92li.uk](https://test.92li.uk)。
 
@@ -33,8 +33,9 @@
 
 ## ✨ Features
 
-- **🔍 66 项现代 Web 能力检测**
+- **🔍 91 项现代 Web 能力检测**
   - 覆盖 ES6、Fetch API、WebAssembly 等常见特性，以及 Navigation API、Math.sumPrecise()、Iterator.concat()、Intl.Locale 信息 API、CSS field-sizing 与 :open 等现代特性。
+  - 包含 Temporal、Set 集合运算、Iterator Helpers、Float16Array、Uint8Array Base64 等 ES2025+ 内置能力，@scope、@starting-style、锚点定位、subgrid 等 Baseline CSS 能力，以及声明式 Shadow DOM、Invoker Commands、URLPattern、WebCodecs、Web Crypto 等平台 API。
   - 每项结果都会显示为「支持 / 不支持 / 已跳过」，并附上跳过原因。
 
 - **🧭 浏览器与内核信息**
@@ -86,7 +87,7 @@
 
 - **非安全上下文**：依赖安全上下文的 API（例如 Service Worker、Clipboard、WebUSB、WebGPU、Wake Lock 等）在非 HTTPS 或非可信本地来源下不检测；`localhost` 等可信本地来源仍可参与检测。
 - **本地文件**：通过 `file://` 直接打开页面时，依赖网站来源的 API 会被跳过；建议通过 HTTPS 或 `localhost` 访问以获得完整结果。
-- **移动端**：EyeDropper API 等明确仅桌面端提供的功能在移动端跳过。
+- **移动端**：EyeDropper API、Web Serial、WebHID 等明确仅桌面端提供的功能在移动端跳过。
 - **iOS / iPadOS**：在常见 WebKit 环境下，WebUSB、Web Bluetooth、WebXR、Idle Detection、Web MIDI、Speculation Rules 等不可用的功能会被跳过。
 - **iOS 通知**：普通 iOS 标签页不检测 Web Notifications；已添加到主屏幕并以独立 Web App 运行时可进行实际检测。
 - **桌面 Linux**：Web Share API 在该平台的浏览器实现受操作系统能力限制，因此不计入评分。
