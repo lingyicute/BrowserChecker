@@ -235,13 +235,15 @@ test('a late successful startup clears a previous timeout message', async ({ pag
 
 test('real insecure HTTP origin skips APIs requiring a secure context', async ({ page }) => {
   const files = Object.assign(Object.create(null), {
-    '/': 'index.html', '/style.css': 'style.css', '/startup.js': 'startup.js', '/render.js': 'render.js', '/app.js': 'app.js'
+    '/': 'index.html', '/style.css': 'style.css', '/startup.js': 'startup.js', '/render.js': 'render.js',
+    '/app.js': 'app.js', '/favicon.svg': 'favicon.svg'
   });
   await page.route('http://browserchecker.test/**', route => {
     const pathname = new URL(route.request().url()).pathname;
     const file = files[pathname];
     if (!file) return route.fulfill({ status: 404, body: '' });
-    return route.fulfill({ path: path.join(rootDir, file), contentType: file.endsWith('.js') ? 'application/javascript' : (file.endsWith('.css') ? 'text/css' : 'text/html') });
+    const types = { '.js': 'application/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.html': 'text/html' };
+    return route.fulfill({ path: path.join(rootDir, file), contentType: types[path.extname(file)] });
   });
   await ready(page, 'http://browserchecker.test/');
   expect(await page.evaluate(() => window.isSecureContext)).toBe(false);

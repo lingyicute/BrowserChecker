@@ -35,6 +35,7 @@ test('test server rejects inherited property names and non-public paths without 
   }
   assert.equal(request('/').status, 200);
   assert.equal(request('/render.js').headers['Content-Type'], 'application/javascript; charset=utf-8');
+  assert.equal(request('/favicon.svg').headers['Content-Type'], 'image/svg+xml');
   assert.equal(request('/templates/app.html').status, 404);
 });
 

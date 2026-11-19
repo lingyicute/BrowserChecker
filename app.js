@@ -443,7 +443,6 @@ const app = createApp({
     // test 可以返回布尔值、Promise<boolean>，或返回 { skipped: true, reason } 表示运行时判定为环境限制
     const checkModernFeatures = async () => {
       console.log('[浏览器检测] - 开始检测Web特性');
-      console.log('[浏览器检测] - 用户代理:', navigator.userAgent);
 
       const features = [
         // 本脚本能执行就已经证明了所用的 ES6 和 async/await 语法，无需 eval。

@@ -8,7 +8,8 @@ const files = Object.assign(Object.create(null), {
   '/app.js': ['app.js', 'application/javascript; charset=utf-8'],
   '/startup.js': ['startup.js', 'application/javascript; charset=utf-8'],
   '/render.js': ['render.js', 'application/javascript; charset=utf-8'],
-  '/style.css': ['style.css', 'text/css; charset=utf-8']
+  '/style.css': ['style.css', 'text/css; charset=utf-8'],
+  '/favicon.svg': ['favicon.svg', 'image/svg+xml']
 });
 http.createServer((req, res) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') {
