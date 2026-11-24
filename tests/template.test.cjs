@@ -23,3 +23,38 @@ test('the runtime favicon is local and the document suppresses external referrer
   assert.match(html, /<link rel="icon" href="favicon\.svg"/);
   assert.match(html, /<meta name="referrer" content="no-referrer">/);
 });
+
+test('results container renders beneath the fading loading overlay instead of leaving an empty gap', () => {
+  const vm = require('node:vm');
+  const Vue = require('vue');
+  const window = { Vue };
+  vm.runInNewContext(generate(), { Vue, window });
+  const vnode = window.browserCheckerRender({
+    isLoading: true,
+    isFadingOut: true,
+    detectionError: false,
+    scoreColorClass: 'score-green',
+    scoreColorGradient: 'none',
+    displayScore: 100,
+    browserType: 'Chromium',
+    isChromeEngine: true,
+    chromeVersion: 158,
+    recommendation: 'ok',
+    userAgent: 'Chrome/158.0.0.0',
+    getSupportedFeaturesCount: () => 1,
+    getUnsupportedFeaturesCount: () => 0,
+    getSupportRate: () => 100,
+    getSkippedFeaturesCount: () => 0,
+    isMobileDevice: false,
+    isIOSDevice: false,
+    isFileOrigin: false,
+    isSecureContext: true,
+    skipNotices: [],
+    detectionResults: [],
+    getStatusText: () => '支持'
+  }, []);
+  const [overlay, container] = vnode.children;
+  assert.equal(overlay.props['aria-hidden'], 'true');
+  assert.match(overlay.props.class, /fade-out/);
+  assert.equal(container.props.class, 'container content-loaded');
+});

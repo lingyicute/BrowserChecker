@@ -8,6 +8,7 @@ window.browserCheckerRender = (function () {
         ? (_openBlock(), _createElementBlock("div", {
             key: 0,
             class: _normalizeClass(["loading-overlay", { 'fade-out': _ctx.isFadingOut }]),
+            "aria-hidden": _ctx.isFadingOut ? 'true' : null,
             role: "status",
             "aria-live": "polite"
           }, [
@@ -18,9 +19,9 @@ window.browserCheckerRender = (function () {
               }),
               _createElementVNode("div", { class: "loading-text" }, "正在检测浏览器特性...")
             ])
-          ], 2 /* CLASS */))
+          ], 10 /* CLASS, PROPS */, ["aria-hidden"]))
         : _createCommentVNode("v-if", true),
-      (!_ctx.isLoading)
+      (!_ctx.isLoading || _ctx.isFadingOut)
         ? (_openBlock(), _createElementBlock("div", {
             key: 1,
             class: "container content-loaded"

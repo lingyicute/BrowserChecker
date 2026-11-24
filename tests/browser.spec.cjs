@@ -529,7 +529,7 @@ for (const errorName of ['SecurityError', 'NotAllowedError', 'TypeError']) {
 test('disabling CSS animations without reduced-motion leaves all completed content visible', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.goto('/');
-  await page.addStyleTag({ content: '*, *::before, *::after { animation: none !important; }' });
+  await page.addStyleTag({ content: '*, *::before, *::after { animation: none !important; transition: none !important; }' });
   await expect(page.locator('.loading-overlay:visible')).toHaveCount(0);
   for (const selector of ['.block-score', '.block-engine', '.block-features', '.block-details', '.detail-item']) {
     const opacities = await page.locator(selector).evaluateAll(elements => elements.map(el => getComputedStyle(el).opacity));

@@ -1,12 +1,12 @@
     <!-- 加载动画覆盖层 -->
-    <div class="loading-overlay" v-if="isLoading" :class="{ 'fade-out': isFadingOut }" role="status" aria-live="polite">
+    <div class="loading-overlay" v-if="isLoading" :class="{ 'fade-out': isFadingOut }" :aria-hidden="isFadingOut ? 'true' : null" role="status" aria-live="polite">
       <div class="loading-content">
         <div class="loader" aria-hidden="true"></div>
         <div class="loading-text">正在检测浏览器特性...</div>
       </div>
     </div>
 
-    <div class="container content-loaded" v-if="!isLoading">
+    <div class="container content-loaded" v-if="!isLoading || isFadingOut">
       <h1 class="visually-hidden">浏览器检查</h1>
       <!-- 分数部分 -->
       <div class="score-wrapper">
