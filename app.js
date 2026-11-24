@@ -420,6 +420,19 @@ const app = createApp({
     const hasMethods = (object, methods) => !!object &&
       methods.every(method => typeof object[method] === 'function');
 
+    const hasProperty = (object, property) => {
+      if (!object || (typeof object !== 'object' && typeof object !== 'function')) return false;
+      for (let current = object; current; current = Object.getPrototypeOf(current)) {
+        const descriptor = Object.getOwnPropertyDescriptor(current, property);
+        if (descriptor) {
+          return typeof descriptor.get === 'function' ||
+            typeof descriptor.set === 'function' ||
+            descriptor.value !== undefined;
+        }
+      }
+      return false;
+    };
+
     const supportsCSS = (...args) => hasMethods(window.CSS, ['supports']) &&
       !!window.CSS.supports(...args);
 
@@ -554,8 +567,8 @@ const app = createApp({
           hasMethods(HTMLScriptElement, ['supports']) && !!HTMLScriptElement.supports('speculationrules') },
         // Baseline 2026 / ECMAScript 2026 新增能力：仅探测稳定、无需权限的接口，不执行导航或设备操作。
         { name: 'Navigation API', test: () => hasMethods(window.navigation, ['navigate', 'entries']) },
-        { name: 'Math.sumPrecise()', test: () => typeof Math.sumPrecise === 'function' &&
-          Math.sumPrecise([1e20, 0.1, -1e20]) === 0.1 },
+        { name: 'Math.sumPrecise()', test: () => typeof Math === 'object' && !!Math &&
+          typeof Math.sumPrecise === 'function' && Math.sumPrecise([1e20, 0.1, -1e20]) === 0.1 },
         { name: 'Iterator.concat()', test: () => typeof Iterator === 'function' &&
           typeof Iterator.concat === 'function' },
         { name: 'Intl.Locale 信息 API', test: () => typeof Intl === 'object' && !!Intl &&
@@ -568,17 +581,20 @@ const app = createApp({
         { name: 'Iterator Helpers', test: () => typeof Iterator === 'function' &&
           hasMethods(Iterator.prototype, ['map', 'filter', 'take', 'toArray']) },
         { name: 'RegExp.escape()', test: () => typeof RegExp === 'function' && typeof RegExp.escape === 'function' },
-        { name: 'Float16Array', test: () => typeof Float16Array === 'function' && typeof Math.f16round === 'function' },
+        { name: 'Float16Array', test: () => typeof Float16Array === 'function' &&
+          typeof Math === 'object' && !!Math && typeof Math.f16round === 'function' },
         { name: 'Uint8Array Base64 / Hex 编解码', test: () => typeof Uint8Array === 'function' &&
           hasMethods(Uint8Array, ['fromBase64', 'fromHex']) && hasMethods(Uint8Array.prototype, ['toBase64', 'toHex']) },
         { name: 'Temporal API', test: () => typeof Temporal === 'object' && !!Temporal &&
           hasMethods(Temporal.Now, ['instant', 'plainDateISO']) && typeof Temporal.PlainDate === 'function' },
-        { name: 'Object.groupBy() / Map.groupBy()', test: () => hasMethods(Object, ['groupBy']) &&
-          typeof Map === 'function' && hasMethods(Map, ['groupBy']) },
-        { name: 'Promise.withResolvers()', test: () => hasMethods(window.Promise, ['withResolvers']) },
-        { name: 'Promise.try()', test: () => hasMethods(window.Promise, ['try']) },
-        { name: 'Array.fromAsync()', test: () => typeof Array.fromAsync === 'function' },
-        { name: 'Error.isError()', test: () => typeof Error.isError === 'function' },
+        { name: 'Object.groupBy() / Map.groupBy()', test: () => typeof Object === 'function' &&
+          hasMethods(Object, ['groupBy']) && typeof Map === 'function' && hasMethods(Map, ['groupBy']) },
+        { name: 'Promise.withResolvers()', test: () => typeof window.Promise === 'function' &&
+          hasMethods(window.Promise, ['withResolvers']) },
+        { name: 'Promise.try()', test: () => typeof window.Promise === 'function' &&
+          hasMethods(window.Promise, ['try']) },
+        { name: 'Array.fromAsync()', test: () => typeof Array === 'function' && typeof Array.fromAsync === 'function' },
+        { name: 'Error.isError()', test: () => typeof Error === 'function' && typeof Error.isError === 'function' },
         // --- Baseline 与较新的 CSS 能力 ---
         { name: 'CSS @scope', test: () => typeof window.CSSScopeRule === 'function' },
         { name: 'CSS @starting-style', test: () => typeof window.CSSStartingStyleRule === 'function' },
@@ -597,13 +613,14 @@ const app = createApp({
         { name: 'CSS 类型化 attr()', test: () => supportsCSS('width', 'attr(data-width type(<length>), 1px)') },
         // --- Baseline 与较新的 Web 平台能力：不创建元素实例、不发起解析或任务 ---
         { name: '声明式 Shadow DOM / setHTMLUnsafe()', test: () => typeof window.HTMLTemplateElement === 'function' &&
-          'shadowRootMode' in window.HTMLTemplateElement.prototype &&
-          !!window.Element && hasMethods(window.Element.prototype, ['setHTMLUnsafe']) },
+          hasProperty(window.HTMLTemplateElement.prototype, 'shadowRootMode') &&
+          typeof window.Element === 'function' && hasMethods(window.Element.prototype, ['setHTMLUnsafe']) },
         { name: 'Invoker Commands（commandfor）', test: () => typeof window.HTMLButtonElement === 'function' &&
-          'commandForElement' in window.HTMLButtonElement.prototype && typeof window.CommandEvent === 'function' },
-        { name: 'Element.moveBefore()', test: () => !!window.Element && hasMethods(window.Element.prototype, ['moveBefore']) },
-        { name: 'scrollend 事件', test: () => 'onscrollend' in document ||
-          (!!window.Element && 'onscrollend' in window.Element.prototype) },
+          hasProperty(window.HTMLButtonElement.prototype, 'commandForElement') && typeof window.CommandEvent === 'function' },
+        { name: 'Element.moveBefore()', test: () => typeof window.Element === 'function' &&
+          hasMethods(window.Element.prototype, ['moveBefore']) },
+        { name: 'scrollend 事件', test: () => hasProperty(document, 'onscrollend') ||
+          (typeof window.Element === 'function' && hasProperty(window.Element.prototype, 'onscrollend')) },
         { name: 'URLPattern API', test: () => typeof window.URLPattern === 'function' },
         { name: 'Import Maps', test: () => typeof HTMLScriptElement !== 'undefined' &&
           hasMethods(HTMLScriptElement, ['supports']) && !!HTMLScriptElement.supports('importmap') },
@@ -622,7 +639,7 @@ const app = createApp({
         { name: 'Origin Private File System（OPFS）', secure: true, siteOrigin: true,
           test: () => hasMethods(navigator.storage, ['getDirectory']) },
         { name: 'Sanitizer API', test: () => typeof window.Sanitizer === 'function' &&
-          hasMethods(window.Element && window.Element.prototype, ['setHTML']) },
+          typeof window.Element === 'function' && hasMethods(window.Element.prototype, ['setHTML']) },
         // 与 WebUSB / Web Bluetooth 同类的硬件接口：只检查入口方法，不请求设备。
         { name: 'Web Serial API', policy: 'serial', secure: true, desktopOnly: true, test: () => hasMethods(navigator.serial, ['requestPort']) },
         { name: 'WebHID API', policy: 'hid', secure: true, desktopOnly: true, test: () => hasMethods(navigator.hid, ['requestDevice']) }

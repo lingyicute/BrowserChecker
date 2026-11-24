@@ -1305,3 +1305,28 @@ test('missing mount root throws immediately and post-mount render failure trigge
     document: { getElementById: () => null }
   }), /缺少应用挂载节点/);
 });
+
+test('non-constructor intrinsics and undefined prototype descriptors are rejected', async () => {
+  const h = harness();
+  const w = h.context.window;
+  h.context.Math = Object.assign(Object.create(Math), { sumPrecise: {}, f16round: null });
+  h.context.Map = Object.assign(function Map() {}, { groupBy: () => {} });
+  h.context.Object = Object.assign(Object.create(Object), { groupBy: () => {} });
+  h.context.Array = Object.assign(Object.create(Array), { fromAsync: () => {} });
+  h.context.Error = Object.assign(Object.create(Error), { isError: () => {} });
+  w.Promise = { withResolvers: () => {}, try: () => {} };
+  w.HTMLTemplateElement = Object.assign(function HTMLTemplateElement() {}, { prototype: { shadowRootMode: undefined } });
+  w.HTMLButtonElement = Object.assign(function HTMLButtonElement() {}, { prototype: { commandForElement: undefined } });
+  w.CommandEvent = function CommandEvent() {};
+  w.Sanitizer = function Sanitizer() {};
+  w.Element = { prototype: { setHTMLUnsafe: () => {}, moveBefore: () => {}, setHTML: () => {}, onscrollend: null } };
+  h.context.document.onscrollend = undefined;
+  const find = await detect(h);
+  for (const name of ['Math.sumPrecise()', 'Float16Array', 'Object.groupBy() / Map.groupBy()',
+    'Promise.withResolvers()', 'Promise.try()', 'Array.fromAsync()', 'Error.isError()',
+    '声明式 Shadow DOM / setHTMLUnsafe()', 'Invoker Commands（commandfor）',
+    'Element.moveBefore()', 'scrollend 事件', 'Sanitizer API']) {
+    assert.equal(find(name).supported, false, name);
+  }
+});
+
