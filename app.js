@@ -300,7 +300,7 @@ const app = createApp({
           const matches = storage.getItem(key) === key;
           storage.removeItem(key);
           written = false;
-          if (storage.getItem(key) === key) {
+          if (storage.getItem(key) !== null) {
             return { skipped: true, reason: '浏览器未清除网站存储探测键' };
           }
           if (!matches) return false;
@@ -313,7 +313,7 @@ const app = createApp({
         } finally {
           if (written) {
             try {
-              if (storage.getItem(key) === key) storage.removeItem(key);
+              storage.removeItem(key);
             } catch (e) { /* 策略可能在检测期间变化。 */ }
           }
         }
@@ -364,40 +364,42 @@ const app = createApp({
         request.onerror = () => { if (!settled) fail(optionalValue(request, 'error')); };
         request.onupgradeneeded = (event) => {
           // 万一名称碰撞，不读写、更不删除已有数据库；超时后的升级直接回滚。
-          if (settled || event.oldVersion !== 0) {
-            try { request.transaction?.abort(); } catch (e) {}
+          if (settled || !event || event.oldVersion !== 0) {
+            try { optionalValue(request, 'transaction')?.abort(); } catch (e) {}
             if (!settled) finish(restricted);
             return;
           }
           created = true;
           // 升级写入可能异步触发 QuotaExceededError，open 请求随后只报告 AbortError。
           // 保留原始事务错误，避免把存储限制误算为浏览器缺少 IndexedDB。
-          const upgrade = request.transaction;
+          const upgrade = optionalValue(request, 'transaction');
           let write;
-          if (upgrade) upgrade.onabort = () => {
-            if (!settled) fail(optionalValue(upgrade, 'error') || optionalValue(write, 'error'));
-          };
           try {
+            if (upgrade) upgrade.onabort = () => {
+              if (!settled) fail(optionalValue(upgrade, 'error') || optionalValue(write, 'error'));
+            };
             write = request.result.createObjectStore('probe').put('ok', 'probe');
           } catch (error) {
             if (upgrade) {
-              upgrade.onabort = null;
+              try { upgrade.onabort = null; } catch (e) {}
               try { upgrade.abort(); } catch (e) {}
             }
             fail(error);
           }
         };
         request.onsuccess = () => {
-          database = request.result;
-          if (settled) { cleanup(); return; }
-          if (!created) { finish(restricted); return; }
           try {
+            database = request.result;
+            if (settled) { cleanup(); return; }
+            if (!created) { finish(restricted); return; }
             const transaction = database.transaction('probe', 'readonly');
             const read = transaction.objectStore('probe').get('probe');
             transaction.oncomplete = () => {
               try { finish(read.result === 'ok'); } catch (error) { fail(error); }
             };
-            transaction.onabort = () => fail(optionalValue(transaction, 'error') || optionalValue(read, 'error'));
+            const onAbortOrError = () => fail(optionalValue(transaction, 'error') || optionalValue(read, 'error'));
+            transaction.onabort = onAbortOrError;
+            read.onerror = onAbortOrError;
             database.onversionchange = () => finish(restricted);
           } catch (error) { fail(error); }
         };

@@ -1330,3 +1330,34 @@ test('non-constructor intrinsics and undefined prototype descriptors are rejecte
   }
 });
 
+test('storage cleanup removes probe keys when post-write getItem throws and IndexedDB guards async getters', async () => {
+  const h = harness();
+  const s = h.context.window.localStorage;
+  const set = s.setItem;
+  let reads = 0;
+  s.getItem = () => {
+    if (++reads === 1) return null;
+    throw { name: 'SecurityError' };
+  };
+  s.setItem = (key, value) => set(key, value);
+  assert.equal(h.api.testStorage().skipped, true);
+  assert.equal(s.values.size, 0);
+
+  const h2 = harness();
+  const m = indexedDBMock(h2);
+  Object.defineProperty(m.request, 'result', { get() { throw { name: 'SecurityError' }; } });
+  const pending = h2.api.testIndexedDB();
+  m.request.onupgradeneeded({ oldVersion: 0 });
+  assert.equal((await pending).skipped, true);
+  assert.equal(h2.timers.size, 0);
+
+  const h3 = harness();
+  const m3 = indexedDBMock(h3);
+  const pending3 = h3.api.testIndexedDB();
+  m3.request.onupgradeneeded({ oldVersion: 0 });
+  m3.request.onsuccess();
+  m3.read.error = { name: 'QuotaExceededError' };
+  m3.read.onerror();
+  assert.equal((await pending3).skipped, true);
+  assert.equal(h3.timers.size, 0);
+});
