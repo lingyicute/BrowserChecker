@@ -40,6 +40,7 @@ function startupHarness({ withDom = true } = {}) {
   return {
     fallback, loader, app, scripts, timers, listeners,
     mounted: () => window.browserCheckerStartup.mounted(),
+    fail: () => window.browserCheckerStartup.fail(),
     complete: () => window.browserCheckerStartup.complete(),
     timeout: () => [...timers.values()].forEach(timer => timer.fn()),
     emitError: event => { for (const fn of listeners) fn(event); }
@@ -100,6 +101,13 @@ test('late completion restores results after timeout; missing DOM nodes are harm
   assert.equal(h.fallback.hidden, true);
   assert.equal(h.loader.hidden, true);
   assert.equal(h.app.hidden, false);
+  const postMountFail = startupHarness();
+  postMountFail.mounted();
+  assert.equal(postMountFail.app.hidden, false);
+  postMountFail.fail();
+  assert.equal(postMountFail.fallback.hidden, false);
+  assert.equal(postMountFail.loader.hidden, true);
+  assert.equal(postMountFail.app.hidden, true);
   const noDom = startupHarness({ withDom: false });
   assert.doesNotThrow(() => noDom.timeout());
   assert.doesNotThrow(() => noDom.complete());

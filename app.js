@@ -846,15 +846,19 @@ const app = createApp({
 
     // 收尾不依赖动画事件，后台标签页和减少动态效果模式也能正常结束。
     const finishLoading = () => {
-      if (window.browserCheckerStartup) window.browserCheckerStartup.complete();
       isFadingOut.value = true;
       if (prefersReducedMotion() || optionalValue(document, 'hidden') === true) {
         isLoading.value = false;
-        return;
+      } else {
+        setTimeout(() => {
+          isLoading.value = false;
+        }, 800);
       }
-      setTimeout(() => {
-        isLoading.value = false;
-      }, 800);
+      Promise.resolve().then(() => {
+        if (!renderFailed && window.browserCheckerStartup) {
+          window.browserCheckerStartup.complete();
+        }
+      });
     };
 
     // 页面加载后立即检测，无需人为等待一秒。
@@ -915,15 +919,35 @@ const app = createApp({
   }
 });
 
+let renderFailed = false;
+const root = document.getElementById('app');
+if (!root) throw new Error('缺少应用挂载节点');
+const failStartup = () => {
+  renderFailed = true;
+  if (window.browserCheckerStartup && typeof window.browserCheckerStartup.fail === 'function') {
+    window.browserCheckerStartup.fail();
+  } else {
+    root.hidden = true;
+    const fallback = document.getElementById('startup-error');
+    if (fallback) fallback.hidden = false;
+    const loading = document.getElementById('startup-loading');
+    if (loading) loading.hidden = true;
+  }
+};
 // 让未处理的渲染异常到达启动守卫，不把空白页标记为成功。
 app.config.throwUnhandledErrorInProduction = true;
-const root = document.getElementById('app');
+app.config.errorHandler = (error) => {
+  failStartup();
+  throw error;
+};
 app.mount(root);
-if (window.browserCheckerStartup) {
-  window.browserCheckerStartup.mounted();
-} else {
-  // 启动守卫本身被单独禁用时，若 Vue 和应用仍能运行就显示结果。
-  root.hidden = false;
-  const fallback = document.getElementById('startup-error');
-  if (fallback) fallback.hidden = true;
+if (!renderFailed) {
+  if (window.browserCheckerStartup) {
+    window.browserCheckerStartup.mounted();
+  } else {
+    // 启动守卫本身被单独禁用时，若 Vue 和应用仍能运行就显示结果。
+    root.hidden = false;
+    const fallback = document.getElementById('startup-error');
+    if (fallback) fallback.hidden = true;
+  }
 }

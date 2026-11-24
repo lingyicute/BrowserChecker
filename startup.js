@@ -47,6 +47,7 @@
       hide(loadingEl, true);
       if (!failed) hide(appEl, false);
     },
+    fail: fail,
     complete: function () {
       finished = true;
       stopWatching();

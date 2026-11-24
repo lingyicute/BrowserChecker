@@ -198,15 +198,19 @@ test('when only the watchdog is blocked a working app can still show results', a
   await expect(page.locator('#startup-error')).toBeHidden();
 });
 
-test('a render exception cannot masquerade as successful startup', async ({ page }) => {
-  await page.route('**/render.js', route => route.fulfill({
-    body: 'window.browserCheckerRender = () => { throw new Error("test render failure"); };',
-    contentType: 'application/javascript'
-  }));
-  await page.goto('/');
-  await expect(page.locator('#startup-error')).toBeVisible();
-  await expect(page.locator('#app')).toBeHidden();
-});
+for (const phase of ['initial', 'results']) {
+  test(`a ${phase} render exception cannot masquerade as successful startup`, async ({ page }) => {
+    await page.route('**/render.js', route => route.fulfill({
+      body: phase === 'initial'
+        ? 'window.browserCheckerRender = () => { throw new Error("test render failure"); };'
+        : 'window.browserCheckerRender = (ctx) => { if (!ctx.isLoading || ctx.isFadingOut) throw new Error("test results render failure"); return Vue.h("div"); };',
+      contentType: 'application/javascript'
+    }));
+    await page.goto('/');
+    await expect(page.locator('#startup-error')).toBeVisible();
+    await expect(page.locator('#app')).toBeHidden();
+  });
+}
 
 test('an empty application script is caught by the startup timeout', async ({ page }) => {
   await page.clock.install();

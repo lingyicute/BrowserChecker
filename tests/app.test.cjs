@@ -49,7 +49,7 @@ function harness() {
       ref: value => ({ value }),
       computed: getter => ({ get value() { return getter(); } }),
       onMounted: fn => { mounted = fn; },
-      createApp: options => ({ config: {}, mount() { state = options.setup(); } })
+      createApp: options => ({ config: (context.appConfig = {}), mount() { state = options.setup(); } })
     }
   };
   context.window = {
@@ -1269,4 +1269,39 @@ test('OPFS requires a secure site origin and never opens the directory', async (
   assert.match((await detect(h))(name).reason, /file:/);
   h.context.location.protocol = 'http:';
   assert.equal((await detect(h))(name).supported, true);
+});
+
+test('missing mount root throws immediately and post-mount render failure triggers startup fallback', async () => {
+  const h = harness();
+  const calls = [];
+  h.context.window.browserCheckerStartup = {
+    mounted() { calls.push('mounted'); },
+    fail() { calls.push('fail'); },
+    complete() { calls.push('complete'); }
+  };
+  const pending = h.mounted();
+  completeImages(h);
+  await pending;
+  await Promise.resolve();
+  assert.deepEqual(calls, ['complete']);
+
+  const h2 = harness();
+  const calls2 = [];
+  h2.context.window.browserCheckerStartup = {
+    mounted() { calls2.push('mounted'); },
+    fail() { calls2.push('fail'); },
+    complete() { calls2.push('complete'); }
+  };
+  assert.throws(() => h2.context.appConfig.errorHandler(new Error('results render failed')));
+  const pending2 = h2.mounted();
+  completeImages(h2);
+  await pending2;
+  await Promise.resolve();
+  assert.deepEqual(calls2, ['fail']);
+
+  assert.throws(() => vm.runInNewContext(source, {
+    Vue: h.context.Vue,
+    window: { browserCheckerRender() {} },
+    document: { getElementById: () => null }
+  }), /缺少应用挂载节点/);
 });
