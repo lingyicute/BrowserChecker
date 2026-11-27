@@ -1,8 +1,11 @@
 <br>
 <br>
 <br>
+<br>
+<p align="center">
+  <img src="./favicon.svg" alt="Logo" width="96" height="96"/>
 <h1 align="center">Browser Checker</h1>
-<h3 align="center">你的浏览器，现在有几分？</h3>
+<h3 align="center">你的浏览器，现在有几分?</h3>
 
 <p align="center">一个轻量、无需构建的网页小工具：打开页面，它就会检查你的浏览器支持多少现代 Web 能力，并给出一个友好、直观的分数。</p>
 <p align="center">Made with ❤️ by <a href="https://github.com/lingyicute">lingyicute</a>.</p>
@@ -27,7 +30,7 @@
 
 点开页面，它就会：识别你的浏览器类型与内核版本，检查 105 项现代 Web 能力，分辨国产浏览器、套壳浏览器和应用内 WebView，并把结果整理成一个 0–100 的分数和几条可读的建议。
 
-这个项目仍然是一个**无需构建的静态网站**：`index.html`、`style.css`、`app.js`、`startup.js`、已生成的 `render.js` 和 `favicon.svg` 是运行时文件。没有后端、没有账号、没有追踪，部署到任意静态托管即可。你也可以直接打开 `index.html`，或访问官方站点 [test.92li.uk](https://test.92li.uk)。
+这个项目是一个**无需构建的静态网站**：`index.html`、`style.css`、`app.js`、`startup.js`、已生成的 `render.js` 和 `favicon.svg` 是运行时文件。没有后端、没有账号、没有追踪，部署到任意静态托管即可。你也可以直接打开 `index.html`，或访问官方站点 [test.92li.uk](https://test.92li.uk)。
 
 <br>
 
@@ -90,13 +93,12 @@
 - **本地文件**：通过 `file://` 直接打开页面时，只因网站来源缺失而跳过明确依赖该来源的 API（如 Service Worker、Cookie Store）；其他安全上下文 API 按浏览器实际环境检测。不透明来源也会跳过来源依赖项。建议通过 HTTPS 或 `localhost` 访问以获得完整结果。
 - **移动端**：EyeDropper、Web Serial、WebHID 等在未暴露对应接口时跳过；新版 Android 浏览器已提供的 Web Serial 会照常检测。
 - **iOS / iPadOS**：在 WebUSB、Web Bluetooth、WebXR、Idle Detection、Web MIDI、Speculation Rules 等接口不可用时跳过；已提供的接口仍按能力判断。
-- **iOS 通知**：普通 iOS 标签页不检测 Web Notifications；已添加到主屏幕并以独立 Web App 运行时可进行实际检测。
+- **iOS 通知**：普通 iOS 标签页不检测 Web Notifications；已添加到主屏幕并以独立 Web App 运行时则可进行实际检测。
 - **桌面 Linux**：Web Share API 若未暴露则跳过；浏览器已提供时仍计入检测。
-- **媒体检测**：WebM / AAC 根据 `canPlayType` 对具体编码或媒体类型的声明判定；这不同于对 WebP / AVIF 样本执行实际图片解码。
 - **图片解码受限**：图片样本被 CSP 拦截或解码超时时跳过；明确解码失败才视为不支持。
 - **页面权限策略**：对已配置策略映射的检测项，如果浏览器提供 Permissions Policy 反射 API，且明确认识并禁止对应策略，则跳过。没有反射 API、未知策略或策略查询失败时仍执行原能力检测，不会据此假定 API 被禁止。此检查不查询或申请用户权限。
 - **API 访问受限**：能力检测访问接口时，若明确抛出 `SecurityError` 或 `NotAllowedError`，标记为无法评估并跳过；普通异常（如 `TypeError`）仍按不支持处理，不一律免除扣分。
-- **网站存储受限**：存储被安全策略限制或配额耗尽时跳过。检测会对 localStorage / sessionStorage 写入并清理随机临时键，不覆盖已有键；碰撞重试有上限，避免异常存储实现阻塞页面。
+- **网站存储受限**：存储被安全策略限制或配额耗尽时跳过。检测会对 localStorage / sessionStorage 写入并清理随机临时键，不覆盖已有键；碰撞重试有上限，异常存储实现不会阻塞页面。
 - **IndexedDB 受限**：通过临时数据库的写入和读取验证可用性，结束时关闭连接并请求删除本次创建的数据库。策略限制、阻塞或 2 秒超时标记为跳过；API 缺失或明确读写失败仍为不支持。
 - **GPU / WebGL 环境**：若当前环境连 WebGL 1.0 上下文也无法创建，则跳过 WebGL 2.0 检测，因为无法区分浏览器能力与 GPU、驱动、远程桌面或系统策略的影响。
 
@@ -157,7 +159,7 @@ npx playwright install --with-deps chromium firefox webkit
 npm run test:browser
 ```
 
-浏览器测试会用本地锁定的 Vue npm 文件替代 CDN 响应，保留浏览器原生 SRI 校验，不依赖 CDN 在线状态。真实 CDN 的可达性仍需部署后检查。
+浏览器测试会用本地锁定的 Vue npm 文件替代 CDN 响应，保留浏览器原生 SRI 校验，不依赖 CDN 在线状态。
 
 回归覆盖还包括不可调用的 API 占位符、安全策略拒绝、受限的 `customElements`、禁用 CSS 动画，以及国产／套壳浏览器的完整警告与扣分。测试服务器另有畸形 URL、静态文件白名单、请求方法和读取错误处理的单元测试。
 
@@ -167,12 +169,11 @@ Pull Request 会自动运行回归测试；主分支 Pages 部署也必须先通
 
 ## ⚠️ 检测范围与运行限制
 
-- 分数是本站规则下的特性可用性评估，不是性能基准测试，也不是完整安全审计；支持率只描述本页实际评估的项目，不能外推为网站兼容率。API 存在不等于已经授权、具有硬件支持，或所有调用都能成功；检测不会申请摄像头、定位、蓝牙等权限。
+- 分数只是特性可用性评估，不是性能基准测试，也不是完整安全审计；支持率只描述本页实际评估的项目，不能外推为网站兼容率。API 存在不等于已经授权、具有硬件支持，或所有调用都能成功；检测不会申请摄像头、定位、蓝牙等权限。
 - 浏览器识别依赖 User-Agent。品牌和版本可被伪装，iOS 上的 Firefox、Chrome、Edge 和 Opera 不因兼容性标记计为 Chromium；通用 Android WebView 单独显示，不触发指定套壳品牌的额外扣分。
 - 运行时使用固定版本的 Vue 生产构建并启用 SRI。首次打开（包括 `file://`）仍需联系 Vue CDN；站点不再请求外部图标，也不会向 CDN 发送页面 Referer。
 - 运行时使用预编译模板，不要求 CSP 开启 `unsafe-eval`。托管方仍需允许所需脚本、样式和 Vue CDN；全部脚本被拦截时会显示静态提示。
-- 显示模式查询、可选 Client Hints 或分数动画被禁用时会降级，不会导致整个检测失败。后台页面和减少动态效果模式直接提供最终分数。
-- 详细结果区域可通过 Tab 聚焦，再用方向键、Page Down / End 等按键滚动；窄屏下特性名称自动换行。
+- 显示模式查询、可选 Client Hints 或分数动画被禁用时会降级，不会导致整个检测失败。后台页面和减少动态效果模式会直接提供最终分数。
 
 <br>
 
